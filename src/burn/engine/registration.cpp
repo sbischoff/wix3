@@ -110,6 +110,8 @@ extern "C" HRESULT RegistrationParseFromXml(
     IXMLDOMNode* pixnRegistrationNode = NULL;
     IXMLDOMNode* pixnArpNode = NULL;
     IXMLDOMNode* pixnUpdateNode = NULL;
+	IXMLDOMNode* pixnTransformsNode = NULL;
+
     LPWSTR scz = NULL;
 
     // select registration node
@@ -306,6 +308,15 @@ extern "C" HRESULT RegistrationParseFromXml(
         ExitOnFailure(hr, "Failed to get @Classification.");
     }
 
+	hr = XmlSelectSingleNode(pixnRegistrationNode, L"Transforms", &pixnTransformsNode);
+
+	if (S_FALSE != hr)
+	{
+		ExitOnFailure(hr, "Failed to select Transforms node.");
+
+
+	}
+
     hr = SetPaths(pRegistration);
     ExitOnFailure(hr, "Failed to set registration paths.");
 
@@ -313,6 +324,7 @@ LExit:
     ReleaseObject(pixnRegistrationNode);
     ReleaseObject(pixnArpNode);
     ReleaseObject(pixnUpdateNode);
+	ReleaseObject(pixnTransformsNode);
     ReleaseStr(scz);
 
     return hr;
@@ -1603,4 +1615,47 @@ LExit:
     ReleaseStr(sczDisplayName);
 
     return hr;
+}
+
+static HRESULT ParseTransforms(
+	__in BURN_REGISTRATION* pRegistration,
+	__in IXMLDOMNode* pixnTransforms
+	)
+{
+	HRESULT hr = S_OK;
+	IXMLDOMNodeList* pixnNodes = NULL;
+	IXMLDOMNode* pixnElement = NULL;
+	DWORD cElements;
+
+	hr = XmlSelectNodes(pixnTransforms, L"Transform", &pixnNodes);
+	ExitOnFailure(hr, "Failed to get Transform nodes");
+
+	hr = pixnNodes->get_length((long*)&cElements);
+	ExitOnFailure(hr, "Failed to get Transform element count.");
+
+	hr = MemEnsureArraySize(reinterpret_cast<LPVOID*>(&pRegistration->rgTransforms), cElements, sizeof(BURN_REGISTRATION_TRANSFORM*), 5);
+	ExitOnFailure(hr, "Failed to resize transform array in registration");
+
+	pRegistration->cTransforms = cElements;
+
+	for (DWORD iTransform = 0;iTransform < cElements;++iTransform)
+	{
+		hr = XmlNextElement(pixnNodes, &pixnElement, NULL);
+		ExitOnFailure(hr, "Failed to get next Transform");
+
+		hr = XmlGetAttributeEx(pixnElement, L"Id", &pRegistration->rgTransforms[iTransform].sczId);
+		ExitOnFailure(hr, "Failed to get @Id.");
+
+		hr = XmlGetAttributeEx(pixnElement, L"RegistrationId", &pRegistration->rgTransforms[iTransform].sczRegistrationId);
+		ExitOnFailure(hr, "Failed to get @RegistrationId.");
+
+		hr = XmlGetAttributeEx(pixnElement, L"DisplayName", &pRegistration->rgTransforms[iTransform].DisplayName);
+		ExitOnFailure(hr, "Failed to get @DisplayName.");
+	}
+
+LExit:
+	ReleaseObject(pixnNodes);
+	ReleaseObject(pixnElement);
+
+	return hr;
 }

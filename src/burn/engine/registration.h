@@ -148,7 +148,20 @@ typedef struct _BURN_REGISTRATION
 
     BOOL fEnabledForwardCompatibleBundle;
     BURN_PACKAGE forwardCompatibleBundle;
+
+	DWORD cTransforms;
+	BURN_REGISTRATION_TRANSFORM rgTransforms;
 } BURN_REGISTRATION;
+
+typedef struct _BURN_REGISTRATION_TRANSFORM {
+	LPWSTR sczId;
+	LPWSTR sczRegistrationId;
+	LPWSTR sczProviderKey;
+	LPWSTR sczDisplayName;
+
+	LPWSTR *rgsczUpgradeCodes;
+	DWORD cUpgradeCodes;
+} BURN_REGISTRATION_TRANSFORM;
 
 
 // functions

@@ -161,6 +161,12 @@ typedef struct _BURN_PATCH_TARGETCODE
     BURN_PATCH_TARGETCODE_TYPE type;
 } BURN_PATCH_TARGETCODE;
 
+typedef struct _BURN_PACKAGE_MSI_INSTANCE_TRANSFORM
+{
+	LPWSTR sczProductCode;
+	LPWSTR sczUpgradeCode;
+} BURN_PACKAGE_MSI_INSTANCE_TRANSFORM;
+
 typedef struct _BURN_PACKAGE
 {
     LPWSTR sczId;
@@ -253,6 +259,9 @@ typedef struct _BURN_PACKAGE
             DWORD cSlipstreamMspPackages;
 
             BOOL fCompatibleInstalled;
+
+			DWORD cInstanceTransforms;
+			BURN_PACKAGE_MSI_INSTANCE_TRANSFORM *rgInstanceTransforms;
         } Msi;
         struct
         {
