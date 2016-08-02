@@ -646,5 +646,32 @@ namespace Microsoft.Tools.WindowsInstallerXml.Bootstrapper
 
             return new Version(major, minor, build, revision);
         }
+
+        public string Transform
+        {
+            get
+            {
+                var c = 255;
+                var result = new StringBuilder(c);
+
+                var ret = this.engine.GetActiveTransform(result, ref c);
+
+                if (NativeMethods.E_INSUFFICIENT_BUFFER == ret || NativeMethods.E_MOREDATA == ret)
+                {
+                    result.Capacity = c + 1;
+                }
+
+                return result.ToString();
+            }
+            set
+            {
+                var ret = this.engine.SetActiveTransfrom(value);
+
+                if (ret != NativeMethods.S_OK && ret != NativeMethods.E_NOTFOUND)
+                {
+                    throw new Win32Exception(ret);
+                }
+            }
+        }
     }
 }

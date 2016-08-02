@@ -143,6 +143,16 @@ namespace Microsoft.Tools.WindowsInstallerXml.Bootstrapper
             [MarshalAs(UnmanagedType.LPWStr)] string wzArguments,
             [MarshalAs(UnmanagedType.U4)] int dwWaitForInputIdleTimeout
             );
+
+        [PreserveSig]
+        int GetActiveTransform(
+            [MarshalAs(UnmanagedType.LPWStr)] StringBuilder transformId,
+            [MarshalAs(UnmanagedType.U4)] ref int pcchTransformId
+            );
+
+        int SetActiveTransfrom(
+            [MarshalAs(UnmanagedType.LPWStr)] string transformId
+            );
     }
 
     /// <summary>
