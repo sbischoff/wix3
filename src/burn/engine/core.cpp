@@ -33,7 +33,8 @@ static HRESULT ParseCommandLine(
     __out_z LPWSTR* psczActiveParent,
     __out_z LPWSTR* psczIgnoreDependencies,
     __out_z LPWSTR* psczAncestors,
-    __out_z LPWSTR* psczSanitizedCommandLine
+    __out_z LPWSTR* psczSanitizedCommandLine,
+    __out_z LPWSTR* psczTransform
     );
 static HRESULT ParsePipeConnection(
     __in LPWSTR* rgArgs,
@@ -73,6 +74,7 @@ extern "C" HRESULT CoreInitialize(
     LPWSTR sczSourceProcessPath = NULL;
     LPWSTR sczSourceProcessFolder = NULL;
     LPWSTR sczOriginalSource = NULL;
+    LPWSTR sczCommandLineTransform = NULL;
 
     // Initialize variables.
     hr = VariableInitialize(&pEngineState->variables);
@@ -93,10 +95,16 @@ extern "C" HRESULT CoreInitialize(
     ExitOnFailure(hr, "Failed to load manifest.");
 
     // Parse command line.
-    hr = ParseCommandLine(pEngineState->argc, pEngineState->argv, &pEngineState->command, &pEngineState->companionConnection, &pEngineState->embeddedConnection, &pEngineState->variables, &pEngineState->mode, &pEngineState->automaticUpdates, &pEngineState->fDisableSystemRestore, &sczSourceProcessPath, &sczOriginalSource, &pEngineState->fDisableUnelevate, &pEngineState->log.dwAttributes, &pEngineState->log.sczPath, &pEngineState->registration.sczActiveParent, &pEngineState->sczIgnoreDependencies, &pEngineState->registration.sczAncestors, &sczSanitizedCommandLine);
+    hr = ParseCommandLine(pEngineState->argc, pEngineState->argv, &pEngineState->command, &pEngineState->companionConnection, &pEngineState->embeddedConnection, &pEngineState->variables, &pEngineState->mode, &pEngineState->automaticUpdates, &pEngineState->fDisableSystemRestore, &sczSourceProcessPath, &sczOriginalSource, &pEngineState->fDisableUnelevate, &pEngineState->log.dwAttributes, &pEngineState->log.sczPath, &pEngineState->registration.sczActiveParent, &pEngineState->sczIgnoreDependencies, &pEngineState->registration.sczAncestors, &sczSanitizedCommandLine, &sczCommandLineTransform);
     ExitOnFailure(hr, "Failed to parse command line.");
 
     LogId(REPORT_STANDARD, MSG_BURN_COMMAND_LINE, sczSanitizedCommandLine ? sczSanitizedCommandLine : L"");
+
+    if (sczCommandLineTransform)
+    {
+        hr = CoreApplyTransform(pEngineState, sczCommandLineTransform);
+        ExitOnFailure(hr, "Failed to apply transform.");
+    }
 
     // Retain whether bundle was initially run elevated.
     ProcElevated(::GetCurrentProcess(), &fElevated);
@@ -157,6 +165,7 @@ LExit:
     ReleaseStr(sczStreamName);
     ReleaseStr(sczSanitizedCommandLine);
     ReleaseMem(pbBuffer);
+    ReleaseStr(sczCommandLineTransform);
 
     return hr;
 }
@@ -617,7 +626,7 @@ extern "C" HRESULT CoreApply(
         hr = CoreElevate(pEngineState, pEngineState->userExperience.hwndApply);
         ExitOnFailure(hr, "Failed to elevate.");
 
-        hr = ElevationApplyInitialize(pEngineState->companionConnection.hPipe, &pEngineState->variables, pEngineState->plan.action, pEngineState->automaticUpdates, !pEngineState->fDisableSystemRestore);
+        hr = ElevationApplyInitialize(pEngineState->companionConnection.hPipe, &pEngineState->variables, pEngineState->plan.action, pEngineState->automaticUpdates, !pEngineState->fDisableSystemRestore, pEngineState->registration.activeTransfrom ? pEngineState->registration.activeTransfrom->sczId : NULL);
         ExitOnFailure(hr, "Another per-machine setup is already executing.");
 
         fElevated = TRUE;
@@ -1056,7 +1065,8 @@ static HRESULT ParseCommandLine(
     __out_z LPWSTR* psczActiveParent,
     __out_z LPWSTR* psczIgnoreDependencies,
     __out_z LPWSTR* psczAncestors,
-    __out_z LPWSTR* psczSanitizedCommandLine
+    __out_z LPWSTR* psczSanitizedCommandLine,
+    __out_z LPWSTR* psczTransform
     )
 {
     HRESULT hr = S_OK;
@@ -1379,6 +1389,17 @@ static HRESULT ParseCommandLine(
             {
                 // Already processed in InitializeEngineState.
             }
+            else if (CSTR_EQUAL == ::CompareStringW(LOCALE_INVARIANT, NORM_IGNORECASE, &argv[i][1], lstrlenW(BURN_COMMANDLINE_SWITCH_TRANSFORM), BURN_COMMANDLINE_SWITCH_TRANSFORM, lstrlenW(BURN_COMMANDLINE_SWITCH_TRANSFORM)))
+            {
+                LPCWSTR wzParam = &argv[i][1 + lstrlenW(BURN_COMMANDLINE_SWITCH_TRANSFORM)];
+                if (L'=' != wzParam[0] || L'\0' == wzParam[1])
+                {
+                    ExitOnRootFailure(hr = E_INVALIDARG, "Missing required parameter for switch: %ls", BURN_COMMANDLINE_SWITCH_TRANSFORM);
+                }
+
+                hr = StrAllocString(psczTransform, &wzParam[1], 0);
+                ExitOnFailure(hr, "Failed to allocate the transform.");
+            }
             else if (lstrlenW(&argv[i][1]) >= lstrlenW(BURN_COMMANDLINE_SWITCH_PREFIX) &&
                 CSTR_EQUAL == ::CompareStringW(LOCALE_INVARIANT, NORM_IGNORECASE, &argv[i][1], lstrlenW(BURN_COMMANDLINE_SWITCH_PREFIX), BURN_COMMANDLINE_SWITCH_PREFIX, lstrlenW(BURN_COMMANDLINE_SWITCH_PREFIX)))
             {
@@ -1650,4 +1671,36 @@ static void LogPackages(
             }
         }
     }
+}
+
+extern "C" HRESULT CoreApplyTransform(
+    __in BURN_ENGINE_STATE* pEngineState,
+    __in_opt LPCWSTR wzTransformId
+    )
+{
+    HRESULT hr = S_OK;
+
+    hr = RegistrationApplyTransfrom(&pEngineState->registration, wzTransformId);
+    ExitOnFailure(hr, "Failed to apply registration transform");
+
+    if (hr == S_OK)
+    {
+        if (wzTransformId)
+        {
+            LogStringLine(REPORT_STANDARD, "Applied bundle transform %ls", wzTransformId);
+        }
+        else
+        {
+            LogStringLine(REPORT_STANDARD, "Reset bundle transform");
+        }
+
+        hr = MsiApplyBundleTransform(&pEngineState->packages, wzTransformId);
+        ExitOnFailure(hr, "Failed to apply msi instance transforms");
+    }
+
+    hr = CoreQueryRegistration(pEngineState);
+    ExitOnFailure(hr, "Failed to query registration.");
+
+LExit:
+    return hr;
 }

@@ -49,6 +49,9 @@ static void RegisterSourceDirectory(
     __in BURN_PACKAGE* pPackage,
     __in_z LPCWSTR wzCacheDirectory
     );
+static HRESULT ResetBundleTransfrom(
+    __in BURN_PACKAGES* pPackages
+    );
 
 
 // function definitions
@@ -226,6 +229,36 @@ extern "C" HRESULT MsiEngineParsePackageFromXml(
         }
     }
 
+    hr = XmlSelectNodes(pixnMsiPackage, L"InstanceTransform", &pixnNodes);
+    ExitOnFailure(hr, "Failed to select instance transform nodes");
+
+    hr = pixnNodes->get_length((long*)&cNodes);
+    ExitOnFailure(hr, "Failed to get instance transform node count.");
+
+    if (cNodes)
+    {
+        pPackage->Msi.rgInstanceTransforms = (BURN_PACKAGE_MSI_INSTANCE_TRANSFORM*)MemAlloc(sizeof(BURN_PACKAGE_MSI_INSTANCE_TRANSFORM) * cNodes, TRUE);
+        ExitOnNull(pPackage->Msi.rgInstanceTransforms, hr, E_OUTOFMEMORY, "Failed to allocate memory for msi instance transforms.");
+
+        for (DWORD i = 0; i < cNodes; ++i)
+        {
+            hr = XmlNextElement(pixnNodes, &pixnNode, NULL);
+            ExitOnFailure(hr, "Failed to get next instance transform node");
+
+            hr = XmlGetAttributeEx(pixnNode, L"Id", &pPackage->Msi.rgInstanceTransforms[i].sczId);
+            ExitOnFailure(hr, "Failed to parse instance transform id");
+
+            hr = XmlGetAttributeEx(pixnNode, L"BundleTransformId", &pPackage->Msi.rgInstanceTransforms[i].sczBundleTransformId);
+            ExitOnFailure(hr, "Failed to parse instance transform bundle transform id");
+
+            hr = XmlGetAttributeEx(pixnNode, L"ProductCode", &pPackage->Msi.rgInstanceTransforms[i].sczProductCode);
+            ExitOnFailure(hr, "Failed to parse instance transform product code");
+
+            hr = XmlGetAttributeEx(pixnNode, L"UpgradeCode", &pPackage->Msi.rgInstanceTransforms[i].sczUpgradeCode);
+            ExitOnFailure(hr, "Failed to parse instance transform upgrade code");
+        }
+    }
+
     hr = S_OK;
 
 LExit:
@@ -371,6 +404,20 @@ extern "C" void MsiEnginePackageUninitialize(
     {
         MemFree(pPackage->Msi.rgpSlipstreamMspPackages);
     }
+
+    if (pPackage->Msi.rgInstanceTransforms)
+    {
+        for (DWORD i = 0; i < pPackage->Msi.cInstanceTransforms; ++i)
+        {
+            ReleaseStr(pPackage->Msi.rgInstanceTransforms[i].sczId);
+            ReleaseStr(pPackage->Msi.rgInstanceTransforms[i].sczBundleTransformId);
+            ReleaseStr(pPackage->Msi.rgInstanceTransforms[i].sczProductCode);
+            ReleaseStr(pPackage->Msi.rgInstanceTransforms[i].sczUpgradeCode);
+        }
+    }
+
+    ReleaseMem(pPackage->Msi.rgInstanceTransforms);
+    ReleaseStr(pPackage->Msi.sczUntransformedProductCode);
 
     // clear struct
     memset(&pPackage->Msi, 0, sizeof(pPackage->Msi));
@@ -1884,4 +1931,75 @@ LExit:
     ReleaseStr(sczMsiDirectory);
 
     return;
+}
+
+static HRESULT ResetBundleTransfrom(
+    __in BURN_PACKAGES* pPackages
+    )
+{
+    HRESULT hr = S_OK;
+
+    for (DWORD i = 0; i < pPackages->cPackages; ++i)
+    {
+        BURN_PACKAGE* pPackage = &pPackages->rgPackages[i];
+        if (pPackage->type == BURN_PACKAGE_TYPE_MSI && pPackage->Msi.sczUntransformedProductCode)
+        {
+            for (DWORD iProvider = 0; iProvider < pPackage->cDependencyProviders; ++iProvider)
+            {
+                if (CSTR_EQUAL == ::CompareStringW(LOCALE_INVARIANT, 0, pPackage->rgDependencyProviders[iProvider].sczKey, -1, pPackage->Msi.sczProductCode, -1))
+                {
+                    hr = StrAllocString(&pPackage->rgDependencyProviders[iProvider].sczKey, pPackage->Msi.sczUntransformedProductCode, 0);
+                    ExitOnFailure(hr, "Failed to copy the transformed product code to the dependency provider");
+                }
+            }
+
+            pPackage->Msi.sczProductCode = pPackage->Msi.sczUntransformedProductCode;
+            pPackage->Msi.sczUntransformedProductCode = NULL;
+        }
+    }
+LExit:
+    return hr;
+}
+
+extern "C" HRESULT MsiApplyBundleTransform(
+    __in BURN_PACKAGES* pPackages,
+    __in_opt LPCWSTR wzBundleTransformId
+    )
+{
+    HRESULT hr = S_OK;
+
+    hr = ResetBundleTransfrom(pPackages);
+    ExitOnFailure(hr, "Failed to reset bundle transfrom for msi packages.");
+
+    if (wzBundleTransformId)
+    {
+        for (DWORD iPackage = 0; iPackage < pPackages->cPackages; ++iPackage)
+        {
+            BURN_PACKAGE* pPackage = &pPackages->rgPackages[iPackage];
+            if (pPackage->type == BURN_PACKAGE_TYPE_MSI)
+            {
+                for (DWORD iTransform = 0; iTransform < pPackage->Msi.cInstanceTransforms; ++iTransform)
+                {
+                    if (CSTR_EQUAL == ::CompareStringW(LOCALE_INVARIANT, 0, pPackage->Msi.rgInstanceTransforms[iTransform].sczBundleTransformId, -1, wzBundleTransformId, -1))
+                    {
+                        for (DWORD iProvider = 0; iProvider < pPackage->cDependencyProviders; ++iProvider)
+                        {
+                            if (CSTR_EQUAL == ::CompareStringW(LOCALE_INVARIANT, 0, pPackage->rgDependencyProviders[iProvider].sczKey, -1, pPackage->Msi.sczProductCode, -1))
+                            {
+                                hr = StrAllocString(&pPackage->rgDependencyProviders[iProvider].sczKey, pPackage->Msi.rgInstanceTransforms[iTransform].sczProductCode, 0);
+                                ExitOnFailure(hr, "Failed to copy the transformed product code to the dependency provider");
+                            }
+                        }
+
+                        pPackage->Msi.sczUntransformedProductCode = pPackage->Msi.sczProductCode;
+                        pPackage->Msi.sczProductCode = pPackage->Msi.rgInstanceTransforms[iTransform].sczProductCode;
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
+LExit:
+    return hr;
 }

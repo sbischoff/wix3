@@ -771,6 +771,74 @@ public: // IBootstrapperEngine
         return hr;
     }
 
+    virtual STDMETHODIMP GetActiveTransform(
+        __out_ecount_opt(*pcchTransfromId) LPWSTR wzTransfromId,
+        __inout DWORD* pcchTransfromId
+        )
+    {
+        HRESULT hr = S_OK;
+        BOOL fLeaveCriticalSection = FALSE;
+        size_t cchRemaining = 0;
+
+        ::EnterCriticalSection(&m_pEngineState->csActive);
+        fLeaveCriticalSection = TRUE;
+
+        if (pcchTransfromId)
+        {
+            if (m_pEngineState->registration.activeTransfrom)
+            {
+                if (wzTransfromId)
+                {
+                    hr = ::StringCchCopyExW(wzTransfromId, *pcchTransfromId, m_pEngineState->registration.activeTransfrom->sczId, NULL, &cchRemaining, STRSAFE_FILL_BEHIND_NULL);
+                    if (STRSAFE_E_INSUFFICIENT_BUFFER == hr)
+                    {
+                        hr = E_MOREDATA;
+                        ::StringCchLengthW(m_pEngineState->registration.activeTransfrom->sczId, STRSAFE_MAX_CCH, &cchRemaining);
+                        *pcchTransfromId = cchRemaining;
+                    }
+                }
+                else
+                {
+                    ::StringCchLengthW(m_pEngineState->registration.activeTransfrom->sczId, STRSAFE_MAX_CCH, &cchRemaining);
+                    *pcchTransfromId = cchRemaining;
+                }
+            }
+        }
+        else
+        {
+            hr = E_INVALIDARG;
+        }
+
+        if (fLeaveCriticalSection)
+        {
+            ::LeaveCriticalSection(&m_pEngineState->csActive);
+        }
+
+        return hr;
+    }
+
+    virtual STDMETHODIMP SetActiveTransfrom(
+        __in LPCWSTR wzTransformId
+        )
+    {
+        HRESULT hr = S_OK;
+        BOOL fLeaveCriticalSection = FALSE;
+
+        ::EnterCriticalSection(&m_pEngineState->csActive);
+        fLeaveCriticalSection = TRUE;
+
+        hr = CoreApplyTransform(m_pEngineState, wzTransformId);
+        ExitOnFailure(hr, "Failed to apply tranform");
+
+    LExit:
+        if (fLeaveCriticalSection)
+        {
+            ::LeaveCriticalSection(&m_pEngineState->csActive);
+        }
+
+        return hr;
+    }
+
 public: // IMarshal
     virtual STDMETHODIMP GetUnmarshalClass( 
         __in REFIID /*riid*/,

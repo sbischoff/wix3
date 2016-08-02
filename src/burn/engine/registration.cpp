@@ -94,6 +94,14 @@ static HRESULT UpdateBundleNameRegistration(
     __in BURN_VARIABLES* pVariables,
     __in HKEY hkRegistration
     );
+static HRESULT ParseTransforms(
+    __in IXMLDOMNode* pixnRegistrationNode,
+    __out BURN_REGISTRATION_TRANSFORM** prgTransforms,
+    __out DWORD* pcTransforms
+    );
+static HRESULT ResetTransform(
+    __in BURN_REGISTRATION* pRegistration
+    );
 
 // function definitions
 
@@ -308,14 +316,8 @@ extern "C" HRESULT RegistrationParseFromXml(
         ExitOnFailure(hr, "Failed to get @Classification.");
     }
 
-	hr = XmlSelectSingleNode(pixnRegistrationNode, L"Transforms", &pixnTransformsNode);
-
-	if (S_FALSE != hr)
-	{
-		ExitOnFailure(hr, "Failed to select Transforms node.");
-
-
-	}
+    hr = ParseTransforms(pixnTransformsNode, &pRegistration->rgTransforms, &pRegistration->cTransforms);
+    ExitOnFailure(hr, "Failed to parse transforms.");
 
     hr = SetPaths(pRegistration);
     ExitOnFailure(hr, "Failed to set registration paths.");
@@ -324,7 +326,7 @@ LExit:
     ReleaseObject(pixnRegistrationNode);
     ReleaseObject(pixnArpNode);
     ReleaseObject(pixnUpdateNode);
-	ReleaseObject(pixnTransformsNode);
+    ReleaseObject(pixnTransformsNode);
     ReleaseStr(scz);
 
     return hr;
@@ -407,6 +409,25 @@ extern "C" void RegistrationUninitialize(
     ReleaseStr(pRegistration->sczDetectedProviderKeyBundleId);
     ReleaseStr(pRegistration->sczAncestors);
     RelatedBundlesUninitialize(&pRegistration->relatedBundles);
+
+    if (pRegistration->rgTransforms)
+    {
+        for (DWORD i = 0; i < pRegistration->cTransforms; ++i)
+        {
+            ReleaseStr(pRegistration->rgTransforms[i].sczId);
+            ReleaseStr(pRegistration->rgTransforms[i].sczRegistrationId);
+            ReleaseStr(pRegistration->rgTransforms[i].sczDisplayName);
+            ReleaseStr(pRegistration->rgTransforms[i].sczUpgradeCode);
+            ReleaseStr(pRegistration->rgTransforms[i].sczProviderKey);
+        }
+    }
+
+    ReleaseStr(pRegistration->sczUntransformedId);
+    ReleaseStr(pRegistration->sczUntransformedProviderKey);
+    ReleaseStr(pRegistration->sczUntransformedDisplayName);
+    ReleaseStr(pRegistration->sczUntransformedUpgradeCode);
+
+    ReleaseMem(pRegistration->rgTransforms);
 
     // clear struct
     memset(pRegistration, 0, sizeof(BURN_REGISTRATION));
@@ -608,6 +629,7 @@ extern "C" HRESULT RegistrationSessionBegin(
     DWORD dwSize = 0;
     HKEY hkRegistration = NULL;
     LPWSTR sczPublisher = NULL;
+    LPWSTR sczUninstallTransformParam = NULL;
 
     LogId(REPORT_VERBOSE, MSG_SESSION_BEGIN, pRegistration->sczRegistrationKey, dwRegistrationOptions, LoggingBoolToString(pRegistration->fDisableResume));
 
@@ -778,15 +800,20 @@ extern "C" HRESULT RegistrationSessionBegin(
             ExitOnFailure(hr, "Failed to write %ls value.", REGISTRY_BUNDLE_SYSTEM_COMPONENT);
         }
 
+        if (pRegistration->activeTransfrom)
+        {
+            StrAllocFormatted(&sczUninstallTransformParam, L" /%ls=%ls", BURN_COMMANDLINE_SWITCH_TRANSFORM, pRegistration->activeTransfrom);
+        }
+
         // QuietUninstallString: [path to exe] /uninstall /quiet
-        hr = RegWriteStringFormatted(hkRegistration, REGISTRY_BUNDLE_QUIET_UNINSTALL_STRING, L"\"%ls\" /uninstall /quiet", pRegistration->sczCacheExecutablePath);
+        hr = RegWriteStringFormatted(hkRegistration, REGISTRY_BUNDLE_QUIET_UNINSTALL_STRING, L"\"%ls\" /uninstall /quiet%ls", pRegistration->sczCacheExecutablePath, sczUninstallTransformParam ? sczUninstallTransformParam : L"");
         ExitOnFailure(hr, "Failed to write %ls value.", REGISTRY_BUNDLE_QUIET_UNINSTALL_STRING);
 
         // UninstallString, [path to exe]
         // If the modify button is to be disabled, we'll add "/modify" to the uninstall string because the button is "Uninstall/Change". Otherwise,
         // it's just the "Uninstall" button so we add "/uninstall" to make the program just go away.
         LPCWSTR wzUninstallParameters = (BURN_REGISTRATION_MODIFY_DISABLE_BUTTON == pRegistration->modify) ? L"/modify" : L" /uninstall";
-        hr = RegWriteStringFormatted(hkRegistration, REGISTRY_BUNDLE_UNINSTALL_STRING, L"\"%ls\" %ls", pRegistration->sczCacheExecutablePath, wzUninstallParameters);
+        hr = RegWriteStringFormatted(hkRegistration, REGISTRY_BUNDLE_UNINSTALL_STRING, L"\"%ls\" %ls%ls", pRegistration->sczCacheExecutablePath, wzUninstallParameters, sczUninstallTransformParam ? sczUninstallTransformParam : L"");
         ExitOnFailure(hr, "Failed to write %ls value.", REGISTRY_BUNDLE_UNINSTALL_STRING);
 
         if (pRegistration->softwareTags.cSoftwareTags)
@@ -838,6 +865,7 @@ extern "C" HRESULT RegistrationSessionBegin(
 LExit:
     ReleaseStr(sczPublisher);
     ReleaseRegKey(hkRegistration);
+    ReleaseStr(sczUninstallTransformParam);
 
     return hr;
 }
@@ -1297,6 +1325,7 @@ static HRESULT ParseRelatedCodes(
     LPWSTR sczAction = NULL;
     LPWSTR sczId = NULL;
     DWORD cElements = 0;
+    DWORD defaultUpgrade = 0;
 
     hr = XmlSelectNodes(pixnBundle, L"RelatedBundle", &pixnNodes);
     ExitOnFailure(hr, "Failed to get RelatedBundle nodes");
@@ -1330,6 +1359,18 @@ static HRESULT ParseRelatedCodes(
             ExitOnFailure(hr, "Failed to resize Upgrade code array in registration");
 
             pRegistration->rgsczUpgradeCodes[pRegistration->cUpgradeCodes] = sczId;
+
+            if (!pRegistration->defaultUpgradeRelation)
+            {
+                hr = XmlGetAttributeNumber(pixnElement, L"DefaultUpgradeRelation", &defaultUpgrade);
+                ExitOnFailure(hr, "Failed to get @DefaultUpgradeRelation.");
+
+                if (hr == S_OK && defaultUpgrade)
+                {
+                    pRegistration->defaultUpgradeRelation = &pRegistration->rgsczUpgradeCodes[pRegistration->cUpgradeCodes];
+                }
+            }
+
             sczId = NULL;
             ++pRegistration->cUpgradeCodes;
         }
@@ -1618,44 +1659,170 @@ LExit:
 }
 
 static HRESULT ParseTransforms(
-	__in BURN_REGISTRATION* pRegistration,
-	__in IXMLDOMNode* pixnTransforms
-	)
+    __in IXMLDOMNode* pixnRegistrationNode,
+    __out BURN_REGISTRATION_TRANSFORM** prgTransforms,
+    __out DWORD* pcTransforms
+    )
 {
-	HRESULT hr = S_OK;
-	IXMLDOMNodeList* pixnNodes = NULL;
-	IXMLDOMNode* pixnElement = NULL;
-	DWORD cElements;
+    HRESULT hr = S_OK;
+    IXMLDOMNodeList* pixnNodes = NULL;
+    IXMLDOMNode* pixnElement = NULL;
+    DWORD cElements = 0;
+    BURN_REGISTRATION_TRANSFORM* pTransforms = NULL;
 
-	hr = XmlSelectNodes(pixnTransforms, L"Transform", &pixnNodes);
-	ExitOnFailure(hr, "Failed to get Transform nodes");
+    hr = XmlSelectNodes(pixnRegistrationNode, L"BundleTransform", &pixnNodes);
+    ExitOnFailure(hr, "Failed to get BundleTransform nodes");
 
-	hr = pixnNodes->get_length((long*)&cElements);
-	ExitOnFailure(hr, "Failed to get Transform element count.");
+    hr = pixnNodes->get_length((long*)&cElements);
+    ExitOnFailure(hr, "Failed to get BundleTransform element count.");
 
-	hr = MemEnsureArraySize(reinterpret_cast<LPVOID*>(&pRegistration->rgTransforms), cElements, sizeof(BURN_REGISTRATION_TRANSFORM*), 5);
-	ExitOnFailure(hr, "Failed to resize transform array in registration");
+    pTransforms = (BURN_REGISTRATION_TRANSFORM*)MemAlloc(sizeof(BURN_REGISTRATION_TRANSFORM), cElements);
+    ExitOnNull(pTransforms, hr, E_OUTOFMEMORY, "Failed to allocate memory for transform structs");
 
-	pRegistration->cTransforms = cElements;
+    for (DWORD iTransform = 0; iTransform < cElements; ++iTransform)
+    {
+        hr = XmlNextElement(pixnNodes, &pixnElement, NULL);
+        ExitOnFailure(hr, "Failed to get next Transform");
 
-	for (DWORD iTransform = 0;iTransform < cElements;++iTransform)
-	{
-		hr = XmlNextElement(pixnNodes, &pixnElement, NULL);
-		ExitOnFailure(hr, "Failed to get next Transform");
+        hr = XmlGetAttributeEx(pixnElement, L"Id", &pTransforms[iTransform].sczId);
+        ExitOnFailure(hr, "Failed to get @Id.");
 
-		hr = XmlGetAttributeEx(pixnElement, L"Id", &pRegistration->rgTransforms[iTransform].sczId);
-		ExitOnFailure(hr, "Failed to get @Id.");
+        hr = XmlGetAttributeEx(pixnElement, L"UpgradeCode", &pTransforms[iTransform].sczUpgradeCode);
+        ExitOnFailure(hr, "Failed to get @UpgradeCode.");
 
-		hr = XmlGetAttributeEx(pixnElement, L"RegistrationId", &pRegistration->rgTransforms[iTransform].sczRegistrationId);
-		ExitOnFailure(hr, "Failed to get @RegistrationId.");
+        hr = XmlGetAttributeEx(pixnElement, L"RegistrationId", &pTransforms[iTransform].sczRegistrationId);
+        ExitOnFailure(hr, "Failed to get @RegistrationId.");
 
-		hr = XmlGetAttributeEx(pixnElement, L"DisplayName", &pRegistration->rgTransforms[iTransform].DisplayName);
-		ExitOnFailure(hr, "Failed to get @DisplayName.");
-	}
+        hr = XmlGetAttributeEx(pixnElement, L"DisplayName", &pTransforms[iTransform].sczDisplayName);
+        ExitOnFailure(hr, "Failed to get @DisplayName.");
+
+        hr = XmlGetAttributeEx(pixnElement, L"ProviderKey", &pTransforms[iTransform].sczProviderKey);
+        ExitOnFailure(hr, "Failed to get @ProviderKey.");
+    }
+
+    *pcTransforms = cElements;
+    *prgTransforms = pTransforms;
+    pTransforms = NULL;
+
+    hr = S_OK;
 
 LExit:
-	ReleaseObject(pixnNodes);
-	ReleaseObject(pixnElement);
+    ReleaseObject(pixnNodes);
+    ReleaseObject(pixnElement);
+    ReleaseMem(pTransforms);
 
-	return hr;
+    return hr;
+}
+
+static HRESULT ResetTransform(
+    __in BURN_REGISTRATION* pRegistration
+    )
+{
+    HRESULT hr = S_OK;
+
+    if (pRegistration->activeTransfrom)
+    {
+        pRegistration->activeTransfrom = NULL;
+
+        if (pRegistration->sczUntransformedId)
+        {
+            pRegistration->sczId = pRegistration->sczUntransformedId;
+            pRegistration->sczUntransformedId = NULL;
+        }
+
+        if (pRegistration->sczUntransformedProviderKey)
+        {
+            pRegistration->sczProviderKey = pRegistration->sczUntransformedProviderKey;
+            pRegistration->sczUntransformedProviderKey = NULL;
+        }
+
+        if (pRegistration->sczUntransformedDisplayName)
+        {
+            pRegistration->sczDisplayName = pRegistration->sczUntransformedDisplayName;
+            pRegistration->sczUntransformedDisplayName = NULL;
+        }
+
+        if (pRegistration->sczUntransformedUpgradeCode && pRegistration->defaultUpgradeRelation)
+        {
+            *pRegistration->defaultUpgradeRelation = pRegistration->sczUntransformedUpgradeCode;
+            pRegistration->sczUntransformedUpgradeCode = NULL;
+        }
+
+        hr = SetPaths(pRegistration);
+        ExitOnFailure(hr, "Failed to set registration paths.");
+    }
+
+LExit:
+    return hr;
+}
+
+extern "C" HRESULT RegistrationApplyTransfrom(
+    __in BURN_REGISTRATION* pRegistration,
+    __in_opt LPCWSTR wzTransformId
+    )
+{
+    HRESULT hr = S_OK;
+
+    hr = ResetTransform(pRegistration);
+    ExitOnFailure(hr, "Failed to reset transform");
+
+    if (wzTransformId)
+    {
+        for (DWORD i = 0; i < pRegistration->cTransforms; ++i)
+        {
+            if (CSTR_EQUAL == ::CompareStringW(LOCALE_INVARIANT, 0, pRegistration->rgTransforms[i].sczId, -1, wzTransformId, -1))
+            {
+                pRegistration->activeTransfrom = &pRegistration->rgTransforms[i];
+
+                if (pRegistration->activeTransfrom->sczRegistrationId)
+                {
+                    if (!pRegistration->sczUntransformedId)
+                    {
+                        pRegistration->sczUntransformedId = pRegistration->sczId;
+                    }
+                    pRegistration->sczId = pRegistration->activeTransfrom->sczRegistrationId;
+                }
+
+                if (pRegistration->activeTransfrom->sczDisplayName)
+                {
+                    if (!pRegistration->sczUntransformedDisplayName)
+                    {
+                        pRegistration->sczUntransformedDisplayName = pRegistration->sczDisplayName;
+                    }
+                    pRegistration->sczDisplayName = pRegistration->activeTransfrom->sczDisplayName;
+                }
+
+                if (pRegistration->activeTransfrom->sczProviderKey)
+                {
+                    if (!pRegistration->sczUntransformedProviderKey)
+                    {
+                        pRegistration->sczUntransformedProviderKey = pRegistration->sczProviderKey;
+                    }
+                    pRegistration->sczProviderKey = pRegistration->activeTransfrom->sczProviderKey;
+                }
+
+                if (pRegistration->defaultUpgradeRelation)
+                {
+                    if (pRegistration->activeTransfrom->sczUpgradeCode)
+                    {
+                        if (!pRegistration->sczUntransformedUpgradeCode)
+                        {
+                            pRegistration->sczUntransformedUpgradeCode = *pRegistration->defaultUpgradeRelation;
+                        }
+                        *pRegistration->defaultUpgradeRelation = pRegistration->activeTransfrom->sczUpgradeCode;
+                    }
+                }
+
+                hr = SetPaths(pRegistration);
+                ExitOnFailure(hr, "Failed to set registration paths.");
+
+                ExitFunction();
+            }
+        }
+
+        hr = E_NOTFOUND;
+    }
+LExit:
+
+    return hr;
 }

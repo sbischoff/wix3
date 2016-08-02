@@ -118,6 +118,7 @@ static HRESULT ProcessResult(
 static HRESULT OnApplyInitialize(
     __in BURN_VARIABLES* pVariables,
     __in BURN_REGISTRATION* pRegistration,
+    __in BURN_PACKAGES* pPackages,
     __in HANDLE* phLock,
     __in BOOL* pfDisabledWindowsUpdate,
     __in BYTE* pbData,
@@ -173,7 +174,7 @@ static HRESULT OnProcessDependentRegistration(
 static HRESULT OnExecuteExePackage(
     __in HANDLE hPipe,
     __in BURN_PACKAGES* pPackages,
-    __in BURN_RELATED_BUNDLES* pRelatedBundles,
+    __in BURN_REGISTRATION* pRegistration,
     __in BURN_VARIABLES* pVariables,
     __in BYTE* pbData,
     __in DWORD cbData
@@ -304,7 +305,8 @@ extern "C" HRESULT ElevationApplyInitialize(
     __in BURN_VARIABLES* pVariables,
     __in BOOTSTRAPPER_ACTION action,
     __in BURN_AU_PAUSE_ACTION auAction,
-    __in BOOL fTakeSystemRestorePoint
+    __in BOOL fTakeSystemRestorePoint,
+    __in_z_opt LPCWSTR wzTransform
     )
 {
     HRESULT hr = S_OK;
@@ -321,6 +323,9 @@ extern "C" HRESULT ElevationApplyInitialize(
 
     hr = BuffWriteNumber(&pbData, &cbData, (DWORD)fTakeSystemRestorePoint);
     ExitOnFailure(hr, "Failed to write system restore point action to message buffer.");
+
+    hr = BuffWriteString(&pbData, &cbData, wzTransform);
+    ExitOnFailure(hr, "Failed to write transform to message buffer.");
     
     hr = VariableSerialize(pVariables, FALSE, &pbData, &cbData);
     ExitOnFailure(hr, "Failed to write variables.");
@@ -1445,7 +1450,7 @@ static HRESULT ProcessElevatedChildMessage(
     switch (pMsg->dwMessage)
     {
     case BURN_ELEVATION_MESSAGE_TYPE_APPLY_INITIALIZE:
-        hrResult = OnApplyInitialize(pContext->pVariables, pContext->pRegistration, pContext->phLock, pContext->pfDisabledAutomaticUpdates, (BYTE*)pMsg->pvData, pMsg->cbData);
+        hrResult = OnApplyInitialize(pContext->pVariables, pContext->pRegistration, pContext->pPackages, pContext->phLock, pContext->pfDisabledAutomaticUpdates, (BYTE*)pMsg->pvData, pMsg->cbData);
         break;
 
     case BURN_ELEVATION_MESSAGE_TYPE_APPLY_UNINITIALIZE:
@@ -1473,7 +1478,7 @@ static HRESULT ProcessElevatedChildMessage(
         break;
 
     case BURN_ELEVATION_MESSAGE_TYPE_EXECUTE_EXE_PACKAGE:
-        hrResult = OnExecuteExePackage(pContext->hPipe, pContext->pPackages, &pContext->pRegistration->relatedBundles, pContext->pVariables, (BYTE*)pMsg->pvData, pMsg->cbData);
+        hrResult = OnExecuteExePackage(pContext->hPipe, pContext->pPackages, pContext->pRegistration, pContext->pVariables, (BYTE*)pMsg->pvData, pMsg->cbData);
         break;
 
     case BURN_ELEVATION_MESSAGE_TYPE_EXECUTE_MSI_PACKAGE:
@@ -1582,6 +1587,7 @@ static HRESULT ProcessResult(
 static HRESULT OnApplyInitialize(
     __in BURN_VARIABLES* pVariables,
     __in BURN_REGISTRATION* pRegistration,
+    __in BURN_PACKAGES* pPackages,
     __in HANDLE* phLock,
     __in BOOL* pfDisabledWindowsUpdate,
     __in BYTE* pbData,
@@ -1594,6 +1600,7 @@ static HRESULT OnApplyInitialize(
     DWORD dwAUAction = 0;
     DWORD dwTakeSystemRestorePoint = 0;
     LPWSTR sczBundleName = NULL;
+    LPWSTR sczTransform = NULL;
 
     // Deserialize message data.
     hr = BuffReadNumber(pbData, cbData, &iData, &dwAction);
@@ -1605,12 +1612,27 @@ static HRESULT OnApplyInitialize(
     hr = BuffReadNumber(pbData, cbData, &iData, &dwTakeSystemRestorePoint);
     ExitOnFailure(hr, "Failed to read system restore point action.");
 
+    hr = BuffReadString(pbData, cbData, &iData, &sczTransform);
+    ExitOnFailure(hr, "Failed to read transform.")
+
     hr = VariableDeserialize(pVariables, FALSE, pbData, cbData, &iData);
     ExitOnFailure(hr, "Failed to read variables.");
 
     // Initialize.
     hr = ApplyLock(TRUE, phLock);
     ExitOnFailure(hr, "Failed to acquire lock due to setup in other session.");
+
+    if (sczTransform)
+    {
+        hr = RegistrationApplyTransfrom(pRegistration, sczTransform);
+        ExitOnFailure(hr, "Failed to apply registration transform.");
+
+        if (hr == S_OK)
+        {
+            hr = MsiApplyBundleTransform(pPackages, sczTransform);
+            ExitOnFailure(hr, "Failed to apply msi instance transforms.");
+        }
+    }
 
     // Reset and reload the related bundles.
     RelatedBundlesUninitialize(&pRegistration->relatedBundles);
@@ -1671,6 +1693,7 @@ static HRESULT OnApplyInitialize(
 
 LExit:
     ReleaseStr(sczBundleName);
+    ReleaseStr(sczTransform);
     return hr;
 }
 
@@ -1979,7 +2002,7 @@ LExit:
 static HRESULT OnExecuteExePackage(
     __in HANDLE hPipe,
     __in BURN_PACKAGES* pPackages,
-    __in BURN_RELATED_BUNDLES* pRelatedBundles,
+    __in BURN_REGISTRATION* pRegistration,
     __in BURN_VARIABLES* pVariables,
     __in BYTE* pbData,
     __in DWORD cbData
@@ -2018,7 +2041,7 @@ static HRESULT OnExecuteExePackage(
     hr = PackageFindById(pPackages, sczPackage, &executeAction.exePackage.pPackage);
     if (E_NOTFOUND == hr)
     {
-        hr = PackageFindRelatedById(pRelatedBundles, sczPackage, &executeAction.exePackage.pPackage);
+        hr = PackageFindRelatedById(&pRegistration->relatedBundles, sczPackage, &executeAction.exePackage.pPackage);
     }
     ExitOnFailure(hr, "Failed to find package: %ls", sczPackage);
 
@@ -2037,7 +2060,7 @@ static HRESULT OnExecuteExePackage(
     }
 
     // Execute EXE package.
-    hr = ExeEngineExecutePackage(&executeAction, pVariables, static_cast<BOOL>(dwRollback), GenericExecuteMessageHandler, hPipe, &exeRestart);
+    hr = ExeEngineExecutePackage(&executeAction, pVariables, static_cast<BOOL>(dwRollback), GenericExecuteMessageHandler, hPipe, pRegistration->activeTransfrom, &exeRestart);
     ExitOnFailure(hr, "Failed to execute EXE package.");
 
 LExit:

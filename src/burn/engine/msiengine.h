@@ -67,6 +67,10 @@ INSTALLUILEVEL MsiEngineCalculateInstallUiLevel(
     __in BOOTSTRAPPER_DISPLAY display,
     __in BOOTSTRAPPER_ACTION_STATE actionState
     );
+HRESULT MsiApplyBundleTransform(
+    __in BURN_PACKAGES* pPackages,
+    __in_opt LPCWSTR wzBundleTransformId
+    );
 
 #if defined(__cplusplus)
 }

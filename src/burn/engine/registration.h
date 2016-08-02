@@ -85,6 +85,14 @@ typedef struct _BURN_SOFTWARE_TAGS
     DWORD cSoftwareTags;
 } BURN_SOFTWARE_TAGS;
 
+typedef struct _BURN_REGISTRATION_TRANSFORM {
+    LPWSTR sczId;
+    LPWSTR sczRegistrationId;
+    LPWSTR sczUpgradeCode;
+    LPWSTR sczProviderKey;
+    LPWSTR sczDisplayName;
+} BURN_REGISTRATION_TRANSFORM;
+
 typedef struct _BURN_REGISTRATION
 {
     BOOL fPerMachine;
@@ -99,6 +107,7 @@ typedef struct _BURN_REGISTRATION
 
     LPWSTR *rgsczUpgradeCodes;
     DWORD cUpgradeCodes;
+    LPWSTR *defaultUpgradeRelation;
 
     LPWSTR *rgsczAddonCodes;
     DWORD cAddonCodes;
@@ -149,19 +158,15 @@ typedef struct _BURN_REGISTRATION
     BOOL fEnabledForwardCompatibleBundle;
     BURN_PACKAGE forwardCompatibleBundle;
 
-	DWORD cTransforms;
-	BURN_REGISTRATION_TRANSFORM rgTransforms;
+    DWORD cTransforms;
+    BURN_REGISTRATION_TRANSFORM* rgTransforms;
+    BURN_REGISTRATION_TRANSFORM* activeTransfrom;
+
+    LPWSTR sczUntransformedId;
+    LPWSTR sczUntransformedProviderKey;
+    LPWSTR sczUntransformedDisplayName;
+    LPWSTR sczUntransformedUpgradeCode;
 } BURN_REGISTRATION;
-
-typedef struct _BURN_REGISTRATION_TRANSFORM {
-	LPWSTR sczId;
-	LPWSTR sczRegistrationId;
-	LPWSTR sczProviderKey;
-	LPWSTR sczDisplayName;
-
-	LPWSTR *rgsczUpgradeCodes;
-	DWORD cUpgradeCodes;
-} BURN_REGISTRATION_TRANSFORM;
 
 
 // functions
@@ -221,6 +226,10 @@ HRESULT RegistrationLoadState(
 HRESULT RegistrationGetResumeCommandLine(
     __in const BURN_REGISTRATION* pRegistration,
     __deref_out_z LPWSTR* psczResumeCommandLine
+    );
+HRESULT RegistrationApplyTransfrom(
+    __in BURN_REGISTRATION* pRegistration,
+    __in LPCWSTR wzTransformId
     );
 
 

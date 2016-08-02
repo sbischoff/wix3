@@ -163,8 +163,10 @@ typedef struct _BURN_PATCH_TARGETCODE
 
 typedef struct _BURN_PACKAGE_MSI_INSTANCE_TRANSFORM
 {
-	LPWSTR sczProductCode;
-	LPWSTR sczUpgradeCode;
+    LPWSTR sczId;
+    LPWSTR sczBundleTransformId;
+    LPWSTR sczProductCode;
+    LPWSTR sczUpgradeCode;
 } BURN_PACKAGE_MSI_INSTANCE_TRANSFORM;
 
 typedef struct _BURN_PACKAGE
@@ -260,8 +262,10 @@ typedef struct _BURN_PACKAGE
 
             BOOL fCompatibleInstalled;
 
-			DWORD cInstanceTransforms;
-			BURN_PACKAGE_MSI_INSTANCE_TRANSFORM *rgInstanceTransforms;
+            DWORD cInstanceTransforms;
+            BURN_PACKAGE_MSI_INSTANCE_TRANSFORM *rgInstanceTransforms;
+
+            LPWSTR sczUntransformedProductCode;
         } Msi;
         struct
         {
