@@ -651,7 +651,7 @@ namespace Microsoft.Tools.WindowsInstallerXml.Bootstrapper
         {
             get
             {
-                var c = 255;
+                var c = InitialBufferSize;
                 var result = new StringBuilder(c);
 
                 var ret = this.engine.GetActiveTransform(result, ref c);
@@ -667,7 +667,12 @@ namespace Microsoft.Tools.WindowsInstallerXml.Bootstrapper
             {
                 var ret = this.engine.SetActiveTransfrom(value);
 
-                if (ret != NativeMethods.S_OK && ret != NativeMethods.E_NOTFOUND)
+                if (ret == NativeMethods.E_NOTFOUND)
+                {
+                    throw new ArgumentOutOfRangeException(nameof(value));
+                }
+
+                if (ret != NativeMethods.S_OK)
                 {
                     throw new Win32Exception(ret);
                 }

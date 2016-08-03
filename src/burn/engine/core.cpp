@@ -1701,6 +1701,12 @@ extern "C" HRESULT CoreApplyTransform(
     hr = CoreQueryRegistration(pEngineState);
     ExitOnFailure(hr, "Failed to query registration.");
 
+    hr = RegistrationSetVariables(&pEngineState->registration, &pEngineState->variables);
+    ExitOnFailure(hr, "Failed to set registration variables.");
+
+    hr = VariableSetLiteralString(&pEngineState->variables, BURN_BUNDLE_NAME, pEngineState->registration.sczDisplayName, FALSE);
+    ExitOnFailure(hr, "Failed to set bundle name.");
+
 LExit:
     return hr;
 }

@@ -118,7 +118,6 @@ extern "C" HRESULT RegistrationParseFromXml(
     IXMLDOMNode* pixnRegistrationNode = NULL;
     IXMLDOMNode* pixnArpNode = NULL;
     IXMLDOMNode* pixnUpdateNode = NULL;
-	IXMLDOMNode* pixnTransformsNode = NULL;
 
     LPWSTR scz = NULL;
 
@@ -316,7 +315,7 @@ extern "C" HRESULT RegistrationParseFromXml(
         ExitOnFailure(hr, "Failed to get @Classification.");
     }
 
-    hr = ParseTransforms(pixnTransformsNode, &pRegistration->rgTransforms, &pRegistration->cTransforms);
+    hr = ParseTransforms(pixnRegistrationNode, &pRegistration->rgTransforms, &pRegistration->cTransforms);
     ExitOnFailure(hr, "Failed to parse transforms.");
 
     hr = SetPaths(pRegistration);
@@ -326,7 +325,6 @@ LExit:
     ReleaseObject(pixnRegistrationNode);
     ReleaseObject(pixnArpNode);
     ReleaseObject(pixnUpdateNode);
-    ReleaseObject(pixnTransformsNode);
     ReleaseStr(scz);
 
     return hr;
@@ -1670,13 +1668,13 @@ static HRESULT ParseTransforms(
     DWORD cElements = 0;
     BURN_REGISTRATION_TRANSFORM* pTransforms = NULL;
 
-    hr = XmlSelectNodes(pixnRegistrationNode, L"BundleTransform", &pixnNodes);
-    ExitOnFailure(hr, "Failed to get BundleTransform nodes");
+    hr = XmlSelectNodes(pixnRegistrationNode, L"Transform", &pixnNodes);
+    ExitOnFailure(hr, "Failed to get Transform nodes");
 
     hr = pixnNodes->get_length((long*)&cElements);
-    ExitOnFailure(hr, "Failed to get BundleTransform element count.");
+    ExitOnFailure(hr, "Failed to get Transform element count.");
 
-    pTransforms = (BURN_REGISTRATION_TRANSFORM*)MemAlloc(sizeof(BURN_REGISTRATION_TRANSFORM), cElements);
+    pTransforms = (BURN_REGISTRATION_TRANSFORM*)MemAlloc(sizeof(BURN_REGISTRATION_TRANSFORM) * cElements, TRUE);
     ExitOnNull(pTransforms, hr, E_OUTOFMEMORY, "Failed to allocate memory for transform structs");
 
     for (DWORD iTransform = 0; iTransform < cElements; ++iTransform)
@@ -1820,8 +1818,10 @@ extern "C" HRESULT RegistrationApplyTransfrom(
             }
         }
 
+        LogStringLine(REPORT_ERROR, "Invalid transform id %ls", wzTransformId);
         hr = E_NOTFOUND;
     }
+
 LExit:
 
     return hr;

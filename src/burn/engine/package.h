@@ -263,7 +263,8 @@ typedef struct _BURN_PACKAGE
             BOOL fCompatibleInstalled;
 
             DWORD cInstanceTransforms;
-            BURN_PACKAGE_MSI_INSTANCE_TRANSFORM *rgInstanceTransforms;
+            BURN_PACKAGE_MSI_INSTANCE_TRANSFORM* rgInstanceTransforms;
+            BURN_PACKAGE_MSI_INSTANCE_TRANSFORM* activeInstanceTransform;
 
             LPWSTR sczUntransformedProductCode;
         } Msi;

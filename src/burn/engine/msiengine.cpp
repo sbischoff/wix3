@@ -1206,6 +1206,16 @@ extern "C" HRESULT MsiEngineExecutePackage(
         ExitOnFailure2(hr, "Failed to enable logging for package: %ls to: %ls", pExecuteAction->msiPackage.pPackage->sczId, pExecuteAction->msiPackage.sczLogPath);
     }
 
+    if (pExecuteAction->msiPackage.pPackage->Msi.activeInstanceTransform)
+    {
+        StrAllocConcatFormatted(&sczProperties, L" TRANSFORMS=:%ls", pExecuteAction->msiPackage.pPackage->Msi.activeInstanceTransform->sczId);
+
+        if (pExecuteAction->msiPackage.action == BOOTSTRAPPER_ACTION_INSTALL)
+        {
+            StrAllocConcat(&sczProperties, L" MSINEWINSTANCE=1", 0);
+        }
+    }
+
     // set up properties
     hr = MsiEngineConcatProperties(pExecuteAction->msiPackage.pPackage->Msi.rgProperties, pExecuteAction->msiPackage.pPackage->Msi.cProperties, pVariables, fRollback, &sczProperties, FALSE);
     ExitOnFailure(hr, "Failed to add properties to argument string.");
@@ -1942,19 +1952,24 @@ static HRESULT ResetBundleTransfrom(
     for (DWORD i = 0; i < pPackages->cPackages; ++i)
     {
         BURN_PACKAGE* pPackage = &pPackages->rgPackages[i];
-        if (pPackage->type == BURN_PACKAGE_TYPE_MSI && pPackage->Msi.sczUntransformedProductCode)
+        if (pPackage->type == BURN_PACKAGE_TYPE_MSI)
         {
-            for (DWORD iProvider = 0; iProvider < pPackage->cDependencyProviders; ++iProvider)
+            if (pPackage->Msi.sczUntransformedProductCode)
             {
-                if (CSTR_EQUAL == ::CompareStringW(LOCALE_INVARIANT, 0, pPackage->rgDependencyProviders[iProvider].sczKey, -1, pPackage->Msi.sczProductCode, -1))
+                for (DWORD iProvider = 0; iProvider < pPackage->cDependencyProviders; ++iProvider)
                 {
-                    hr = StrAllocString(&pPackage->rgDependencyProviders[iProvider].sczKey, pPackage->Msi.sczUntransformedProductCode, 0);
-                    ExitOnFailure(hr, "Failed to copy the transformed product code to the dependency provider");
+                    if (CSTR_EQUAL == ::CompareStringW(LOCALE_INVARIANT, 0, pPackage->rgDependencyProviders[iProvider].sczKey, -1, pPackage->Msi.sczProductCode, -1))
+                    {
+                        hr = StrAllocString(&pPackage->rgDependencyProviders[iProvider].sczKey, pPackage->Msi.sczUntransformedProductCode, 0);
+                        ExitOnFailure(hr, "Failed to copy the transformed product code to the dependency provider");
+                    }
                 }
+
+                pPackage->Msi.sczProductCode = pPackage->Msi.sczUntransformedProductCode;
+                pPackage->Msi.sczUntransformedProductCode = NULL;
             }
 
-            pPackage->Msi.sczProductCode = pPackage->Msi.sczUntransformedProductCode;
-            pPackage->Msi.sczUntransformedProductCode = NULL;
+            pPackage->Msi.activeInstanceTransform = NULL;
         }
     }
 LExit:
@@ -1993,6 +2008,8 @@ extern "C" HRESULT MsiApplyBundleTransform(
 
                         pPackage->Msi.sczUntransformedProductCode = pPackage->Msi.sczProductCode;
                         pPackage->Msi.sczProductCode = pPackage->Msi.rgInstanceTransforms[iTransform].sczProductCode;
+
+                        pPackage->Msi.activeInstanceTransform = &pPackage->Msi.rgInstanceTransforms[iTransform];
                         break;
                     }
                 }
