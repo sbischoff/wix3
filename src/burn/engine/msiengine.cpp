@@ -384,6 +384,7 @@ extern "C" void MsiEnginePackageUninitialize(
             BURN_RELATED_MSI* pRelatedMsi = &pPackage->Msi.rgRelatedMsis[i];
 
             ReleaseStr(pRelatedMsi->sczUpgradeCode);
+            ReleaseStr(pRelatedMsi->sczUntransformedUpgradeCode);
             ReleaseMem(pRelatedMsi->rgdwLanguages);
         }
         MemFree(pPackage->Msi.rgRelatedMsis);
@@ -1945,28 +1946,47 @@ LExit:
 
 static HRESULT ResetBundleTransfrom(
     __in BURN_PACKAGES* pPackages
-    )
+)
 {
     HRESULT hr = S_OK;
 
     for (DWORD i = 0; i < pPackages->cPackages; ++i)
     {
         BURN_PACKAGE* pPackage = &pPackages->rgPackages[i];
-        if (pPackage->type == BURN_PACKAGE_TYPE_MSI)
+
+        if (pPackage->type == BURN_PACKAGE_TYPE_MSI && pPackage->Msi.activeInstanceTransform)
         {
             if (pPackage->Msi.sczUntransformedProductCode)
             {
-                for (DWORD iProvider = 0; iProvider < pPackage->cDependencyProviders; ++iProvider)
+                if (pPackage->rgDependencyProviders)
                 {
-                    if (CSTR_EQUAL == ::CompareStringW(LOCALE_INVARIANT, 0, pPackage->rgDependencyProviders[iProvider].sczKey, -1, pPackage->Msi.sczProductCode, -1))
+                    for (DWORD iProvider = 0; iProvider < pPackage->cDependencyProviders; ++iProvider)
                     {
-                        hr = StrAllocString(&pPackage->rgDependencyProviders[iProvider].sczKey, pPackage->Msi.sczUntransformedProductCode, 0);
-                        ExitOnFailure(hr, "Failed to copy the transformed product code to the dependency provider");
+                        if (CSTR_EQUAL == ::CompareStringW(LOCALE_INVARIANT, 0, pPackage->rgDependencyProviders[iProvider].sczKey, -1, pPackage->Msi.sczProductCode, -1))
+                        {
+                            hr = StrAllocString(&pPackage->rgDependencyProviders[iProvider].sczKey, pPackage->Msi.sczUntransformedProductCode, 0);
+                            ExitOnFailure(hr, "Failed to copy the untransformed product code to the dependency provider");
+                        }
                     }
                 }
 
                 pPackage->Msi.sczProductCode = pPackage->Msi.sczUntransformedProductCode;
                 pPackage->Msi.sczUntransformedProductCode = NULL;
+            }
+
+            if (pPackage->Msi.rgRelatedMsis)
+            {
+                for (DWORD iRelated = 0; i < pPackage->Msi.cRelatedMsis; ++iRelated)
+                {
+                    if (pPackage->Msi.rgRelatedMsis[iRelated].sczUntransformedUpgradeCode)
+                    {
+                        hr = StrFree(pPackage->Msi.rgRelatedMsis[iRelated].sczUpgradeCode);
+                        ExitOnFailure(hr, "Failed to free related msi upgrade code.");
+
+                        pPackage->Msi.rgRelatedMsis[iRelated].sczUpgradeCode = pPackage->Msi.rgRelatedMsis[iRelated].sczUntransformedUpgradeCode;
+                        pPackage->Msi.rgRelatedMsis[iRelated].sczUntransformedUpgradeCode = NULL;
+                    }
+                }
             }
 
             pPackage->Msi.activeInstanceTransform = NULL;
@@ -1997,17 +2017,35 @@ extern "C" HRESULT MsiApplyBundleTransform(
                 {
                     if (CSTR_EQUAL == ::CompareStringW(LOCALE_INVARIANT, 0, pPackage->Msi.rgInstanceTransforms[iTransform].sczBundleTransformId, -1, wzBundleTransformId, -1))
                     {
-                        for (DWORD iProvider = 0; iProvider < pPackage->cDependencyProviders; ++iProvider)
+                        if (pPackage->Msi.rgInstanceTransforms[iTransform].sczProductCode)
                         {
-                            if (CSTR_EQUAL == ::CompareStringW(LOCALE_INVARIANT, 0, pPackage->rgDependencyProviders[iProvider].sczKey, -1, pPackage->Msi.sczProductCode, -1))
+                            if (pPackage->rgDependencyProviders)
                             {
-                                hr = StrAllocString(&pPackage->rgDependencyProviders[iProvider].sczKey, pPackage->Msi.rgInstanceTransforms[iTransform].sczProductCode, 0);
-                                ExitOnFailure(hr, "Failed to copy the transformed product code to the dependency provider");
+                                for (DWORD iProvider = 0; iProvider < pPackage->cDependencyProviders; ++iProvider)
+                                {
+                                    if (CSTR_EQUAL == ::CompareStringW(LOCALE_INVARIANT, 0, pPackage->rgDependencyProviders[iProvider].sczKey, -1, pPackage->Msi.sczProductCode, -1))
+                                    {
+                                        hr = StrAllocString(&pPackage->rgDependencyProviders[iProvider].sczKey, pPackage->Msi.rgInstanceTransforms[iTransform].sczProductCode, 0);
+                                        ExitOnFailure(hr, "Failed to copy the transformed product code to the dependency provider");
+                                    }
+                                }
                             }
+
+                            pPackage->Msi.sczUntransformedProductCode = pPackage->Msi.sczProductCode;
+                            pPackage->Msi.sczProductCode = pPackage->Msi.rgInstanceTransforms[iTransform].sczProductCode;
                         }
 
-                        pPackage->Msi.sczUntransformedProductCode = pPackage->Msi.sczProductCode;
-                        pPackage->Msi.sczProductCode = pPackage->Msi.rgInstanceTransforms[iTransform].sczProductCode;
+                        if (pPackage->Msi.rgInstanceTransforms[iTransform].sczUpgradeCode && pPackage->Msi.rgRelatedMsis)
+                        {
+                            for (DWORD iRelated = 0; iRelated < pPackage->Msi.cRelatedMsis; ++iRelated)
+                            {
+                                pPackage->Msi.rgRelatedMsis[iRelated].sczUntransformedUpgradeCode = pPackage->Msi.rgRelatedMsis[iRelated].sczUpgradeCode;
+                                pPackage->Msi.rgRelatedMsis[iRelated].sczUpgradeCode = NULL;
+
+                                hr = StrAllocString(&pPackage->Msi.rgRelatedMsis[iRelated].sczUpgradeCode, pPackage->Msi.rgInstanceTransforms[iTransform].sczUpgradeCode, 0);
+                                ExitOnFailure(hr, "Failed to copy transformed upgrade code to related msi.");
+                            }
+                        }
 
                         pPackage->Msi.activeInstanceTransform = &pPackage->Msi.rgInstanceTransforms[iTransform];
                         break;

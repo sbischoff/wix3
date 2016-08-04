@@ -133,6 +133,8 @@ typedef struct _BURN_RELATED_MSI
 
     DWORD* rgdwLanguages;
     DWORD cLanguages;
+
+    LPWSTR sczUntransformedUpgradeCode;
 } BURN_RELATED_MSI;
 
 typedef struct _BURN_PACKAGE_PAYLOAD
