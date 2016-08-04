@@ -1720,31 +1720,39 @@ static HRESULT ResetTransform(
 
     if (pRegistration->activeTransfrom)
     {
-        pRegistration->activeTransfrom = NULL;
-
         if (pRegistration->sczUntransformedId)
         {
-            pRegistration->sczId = pRegistration->sczUntransformedId;
-            pRegistration->sczUntransformedId = NULL;
+            hr = StrAllocString(&pRegistration->sczId, pRegistration->sczUntransformedId, 0);
+            ExitOnFailure(hr, "Failed to copy untransformed id to id.");
+
+            ReleaseNullStr(pRegistration->sczUntransformedId);
         }
 
         if (pRegistration->sczUntransformedProviderKey)
         {
-            pRegistration->sczProviderKey = pRegistration->sczUntransformedProviderKey;
-            pRegistration->sczUntransformedProviderKey = NULL;
+            hr = StrAllocString(&pRegistration->sczProviderKey, pRegistration->sczUntransformedProviderKey, 0);
+            ExitOnFailure(hr, "Failed to copy untransformed provider key to provider key.");
+
+            ReleaseNullStr(pRegistration->sczUntransformedProviderKey);
         }
 
         if (pRegistration->sczUntransformedDisplayName)
         {
-            pRegistration->sczDisplayName = pRegistration->sczUntransformedDisplayName;
-            pRegistration->sczUntransformedDisplayName = NULL;
+            hr = StrAllocString(&pRegistration->sczDisplayName, pRegistration->sczUntransformedDisplayName, 0);
+            ExitOnFailure(hr, "Failed to copy untransformed display name to display name.");
+
+            ReleaseNullStr(pRegistration->sczUntransformedDisplayName);
         }
 
         if (pRegistration->sczUntransformedUpgradeCode && pRegistration->defaultUpgradeRelation)
         {
-            *pRegistration->defaultUpgradeRelation = pRegistration->sczUntransformedUpgradeCode;
-            pRegistration->sczUntransformedUpgradeCode = NULL;
+            hr = StrAllocString(pRegistration->defaultUpgradeRelation, pRegistration->sczUntransformedUpgradeCode, 0);
+            ExitOnFailure(hr, "Failed to copy untransformed upgrade code to upgrade code.");
+            
+            ReleaseNullStr(pRegistration->sczUntransformedUpgradeCode);
         }
+
+        pRegistration->activeTransfrom = NULL;
 
         hr = SetPaths(pRegistration);
         ExitOnFailure(hr, "Failed to set registration paths.");
@@ -1774,41 +1782,38 @@ extern "C" HRESULT RegistrationApplyTransfrom(
 
                 if (pRegistration->activeTransfrom->sczRegistrationId)
                 {
-                    if (!pRegistration->sczUntransformedId)
-                    {
-                        pRegistration->sczUntransformedId = pRegistration->sczId;
-                    }
-                    pRegistration->sczId = pRegistration->activeTransfrom->sczRegistrationId;
+                    hr = StrAllocString(&pRegistration->sczUntransformedId, pRegistration->sczId, 0);
+                    ExitOnFailure(hr, "Failed to copy id to untransformed id.");
+
+                    hr = StrAllocString(&pRegistration->sczId, pRegistration->activeTransfrom->sczRegistrationId, 0);
+                    ExitOnFailure(hr, "Failed to copy transformed id to id.");
                 }
 
-                if (pRegistration->activeTransfrom->sczDisplayName)
+                if (pRegistration->activeTransfrom->sczDisplayName && pRegistration->sczDisplayName)
                 {
-                    if (!pRegistration->sczUntransformedDisplayName)
-                    {
-                        pRegistration->sczUntransformedDisplayName = pRegistration->sczDisplayName;
-                    }
-                    pRegistration->sczDisplayName = pRegistration->activeTransfrom->sczDisplayName;
+                    hr = StrAllocString(&pRegistration->sczUntransformedDisplayName, pRegistration->sczDisplayName, 0);
+                    ExitOnFailure(hr, "Failed to copy display name to untransformed display name.");
+
+                    hr = StrAllocString(&pRegistration->sczDisplayName, pRegistration->activeTransfrom->sczDisplayName, 0);
+                    ExitOnFailure(hr, "Failed to copy transformed display name to display name.");
                 }
 
-                if (pRegistration->activeTransfrom->sczProviderKey)
+                if (pRegistration->activeTransfrom->sczProviderKey && pRegistration->sczUntransformedProviderKey)
                 {
-                    if (!pRegistration->sczUntransformedProviderKey)
-                    {
-                        pRegistration->sczUntransformedProviderKey = pRegistration->sczProviderKey;
-                    }
-                    pRegistration->sczProviderKey = pRegistration->activeTransfrom->sczProviderKey;
+                    hr = StrAllocString(&pRegistration->sczUntransformedProviderKey, pRegistration->sczProviderKey, 0);
+                    ExitOnFailure(hr, "Failed to copy provider key to untransformed provider key.");
+
+                    hr = StrAllocString(&pRegistration->sczProviderKey, pRegistration->activeTransfrom->sczProviderKey, 0);
+                    ExitOnFailure(hr, "Failed to copy transformed provider key to provider key.");
                 }
 
-                if (pRegistration->defaultUpgradeRelation)
+                if (pRegistration->defaultUpgradeRelation && *pRegistration->defaultUpgradeRelation && pRegistration->activeTransfrom->sczUpgradeCode)
                 {
-                    if (pRegistration->activeTransfrom->sczUpgradeCode)
-                    {
-                        if (!pRegistration->sczUntransformedUpgradeCode)
-                        {
-                            pRegistration->sczUntransformedUpgradeCode = *pRegistration->defaultUpgradeRelation;
-                        }
-                        *pRegistration->defaultUpgradeRelation = pRegistration->activeTransfrom->sczUpgradeCode;
-                    }
+                    hr = StrAllocString(&pRegistration->sczUntransformedUpgradeCode, *pRegistration->defaultUpgradeRelation, 0);
+                    ExitOnFailure(hr, "Failed to copy upgrade code to untransformed upgrade code");
+
+                    hr = StrAllocString(pRegistration->defaultUpgradeRelation, pRegistration->activeTransfrom->sczUpgradeCode, 0);
+                    ExitOnFailure(hr, "Failed to copy transformed upgrade code to upgrade code.");
                 }
 
                 hr = SetPaths(pRegistration);

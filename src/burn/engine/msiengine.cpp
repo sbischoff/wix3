@@ -415,9 +415,10 @@ extern "C" void MsiEnginePackageUninitialize(
             ReleaseStr(pPackage->Msi.rgInstanceTransforms[i].sczProductCode);
             ReleaseStr(pPackage->Msi.rgInstanceTransforms[i].sczUpgradeCode);
         }
+
+        MemFree(pPackage->Msi.rgInstanceTransforms);
     }
 
-    ReleaseMem(pPackage->Msi.rgInstanceTransforms);
     ReleaseStr(pPackage->Msi.sczUntransformedProductCode);
 
     // clear struct
@@ -1970,8 +1971,10 @@ static HRESULT ResetBundleTransfrom(
                     }
                 }
 
-                pPackage->Msi.sczProductCode = pPackage->Msi.sczUntransformedProductCode;
-                pPackage->Msi.sczUntransformedProductCode = NULL;
+                hr = StrAllocString(&pPackage->Msi.sczProductCode, pPackage->Msi.sczUntransformedProductCode, 0);
+                ExitOnFailure(hr, "Failed to copy untransformed product code to product code.");
+
+                ReleaseNullStr(pPackage->Msi.sczUntransformedProductCode);
             }
 
             if (pPackage->Msi.rgRelatedMsis)
@@ -1980,11 +1983,10 @@ static HRESULT ResetBundleTransfrom(
                 {
                     if (pPackage->Msi.rgRelatedMsis[iRelated].sczUntransformedUpgradeCode)
                     {
-                        hr = StrFree(pPackage->Msi.rgRelatedMsis[iRelated].sczUpgradeCode);
-                        ExitOnFailure(hr, "Failed to free related msi upgrade code.");
+                        hr = StrAllocString(&pPackage->Msi.rgRelatedMsis[iRelated].sczUpgradeCode, pPackage->Msi.rgRelatedMsis[iRelated].sczUntransformedUpgradeCode, 0);
+                        ExitOnFailure(hr, "Failed to copy untransformed upgrade code to upgrade code.")
 
-                        pPackage->Msi.rgRelatedMsis[iRelated].sczUpgradeCode = pPackage->Msi.rgRelatedMsis[iRelated].sczUntransformedUpgradeCode;
-                        pPackage->Msi.rgRelatedMsis[iRelated].sczUntransformedUpgradeCode = NULL;
+                        ReleaseNullStr(pPackage->Msi.rgRelatedMsis[iRelated].sczUntransformedUpgradeCode);
                     }
                 }
             }
@@ -2031,16 +2033,19 @@ extern "C" HRESULT MsiApplyBundleTransform(
                                 }
                             }
 
-                            pPackage->Msi.sczUntransformedProductCode = pPackage->Msi.sczProductCode;
-                            pPackage->Msi.sczProductCode = pPackage->Msi.rgInstanceTransforms[iTransform].sczProductCode;
+                            hr = StrAllocString(&pPackage->Msi.sczUntransformedProductCode, pPackage->Msi.sczProductCode, 0);
+                            ExitOnFailure(hr, "Failed to copy product code to untransformed product code.");
+
+                            hr = StrAllocString(&pPackage->Msi.sczProductCode, pPackage->Msi.rgInstanceTransforms[iTransform].sczProductCode, 0);
+                            ExitOnFailure(hr, "Failed to copy transformed product code to product code.");
                         }
 
                         if (pPackage->Msi.rgInstanceTransforms[iTransform].sczUpgradeCode && pPackage->Msi.rgRelatedMsis)
                         {
                             for (DWORD iRelated = 0; iRelated < pPackage->Msi.cRelatedMsis; ++iRelated)
                             {
-                                pPackage->Msi.rgRelatedMsis[iRelated].sczUntransformedUpgradeCode = pPackage->Msi.rgRelatedMsis[iRelated].sczUpgradeCode;
-                                pPackage->Msi.rgRelatedMsis[iRelated].sczUpgradeCode = NULL;
+                                hr = StrAllocString(&pPackage->Msi.rgRelatedMsis[iRelated].sczUntransformedUpgradeCode, pPackage->Msi.rgRelatedMsis[iRelated].sczUpgradeCode, 0);
+                                ExitOnFailure(hr, "Failed to copy upgrade code to untransformed upgrade code.");
 
                                 hr = StrAllocString(&pPackage->Msi.rgRelatedMsis[iRelated].sczUpgradeCode, pPackage->Msi.rgInstanceTransforms[iTransform].sczUpgradeCode, 0);
                                 ExitOnFailure(hr, "Failed to copy transformed upgrade code to related msi.");
