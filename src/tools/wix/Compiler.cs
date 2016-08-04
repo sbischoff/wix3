@@ -14378,8 +14378,8 @@ namespace Microsoft.Tools.WindowsInstallerXml
                                 }
                                 break;
 
-                            // We need to other elements this below the generation of the id, because the id is an
-                            // input into extension elements.  This also means that we need to re-parse these elements below.
+                                // We need to other elements this below the generation of the id, because the id is an
+                                // input into extension elements.  This also means that we need to re-parse these elements below.
                         }
                     }
                 }
@@ -19877,6 +19877,107 @@ namespace Microsoft.Tools.WindowsInstallerXml
             }
         }
 
+        private void ParseBundleTransformElement(XmlNode node)
+        {
+            SourceLineNumberCollection sourceLineNumbers = Preprocessor.GetSourceLineNumbers(node);
+
+            string id = null;
+            string productName = null;
+            string upgradeCode = null;
+            string productCode = null;
+
+            foreach (XmlAttribute attrib in node.Attributes)
+            {
+                if (0 == attrib.NamespaceURI.Length || attrib.NamespaceURI == this.schema.TargetNamespace)
+                {
+                    switch (attrib.LocalName)
+                    {
+                        case "Id":
+                            id = this.core.GetAttributeValue(sourceLineNumbers, attrib);
+                            break;
+                        case "ProductName":
+                            productName = this.core.GetAttributeValue(sourceLineNumbers, attrib);
+                            break;
+                        case "UpgradeCode":
+                            upgradeCode = this.core.GetAttributeValue(sourceLineNumbers, attrib);
+                            break;
+                        case "ProductCode":
+                            productCode = this.core.GetAttributeValue(sourceLineNumbers, attrib);
+                            break;
+                        default:
+                            this.core.UnexpectedAttribute(sourceLineNumbers, attrib);
+                            break;
+                    }
+                }
+            }
+
+            // If the productcode is not specified or given with a * we generate a new one.
+            if (productCode == null || productCode == "*")
+                productCode = System.Guid.NewGuid().ToString();
+
+            // Do further validation of specified input
+            if (String.IsNullOrEmpty(productName))
+                this.core.OnMessage(WixErrors.ExpectedAttribute(sourceLineNumbers, node.LocalName, "ProductName"));
+
+            if (String.IsNullOrEmpty(upgradeCode))
+                this.core.OnMessage(WixErrors.ExpectedAttribute(sourceLineNumbers, node.LocalName, "UpgradeCode"));
+
+            if (String.IsNullOrEmpty(id))
+                this.core.OnMessage(WixErrors.ExpectedAttribute(sourceLineNumbers, node.LocalName, "Id"));
+
+            if (!this.core.EncounteredError)
+            {
+                Row row = this.core.CreateRow(sourceLineNumbers, "WixBundleTransform");
+                row[0] = id;
+                row[1] = productCode;
+                row[2] = productName;
+                row[3] = upgradeCode;
+            }
+        }
+
+        private void ParseMsiTransformElement(XmlNode node, string packageId)
+        {
+            SourceLineNumberCollection sourceLineNumbers = Preprocessor.GetSourceLineNumbers(node);
+
+            string id = null;
+            string bundleTransformId = null;
+
+            foreach (XmlAttribute attrib in node.Attributes)
+            {
+                if (0 == attrib.NamespaceURI.Length || attrib.NamespaceURI == this.schema.TargetNamespace)
+                {
+                    switch (attrib.LocalName)
+                    {
+                        case "Id":
+                            id = this.core.GetAttributeValue(sourceLineNumbers, attrib);
+                            break;
+                        case "BundleTransformId":
+                            bundleTransformId = this.core.GetAttributeValue(sourceLineNumbers, attrib);
+                            break;
+                        default:
+                            this.core.UnexpectedAttribute(sourceLineNumbers, attrib);
+                            break;
+                    }
+                }
+            }
+
+
+            // Do further validation of specified input
+            if (String.IsNullOrEmpty(id))
+                this.core.OnMessage(WixErrors.ExpectedAttribute(sourceLineNumbers, node.LocalName, "Id"));
+
+            if (String.IsNullOrEmpty(bundleTransformId))
+                this.core.OnMessage(WixErrors.ExpectedAttribute(sourceLineNumbers, node.LocalName, "BundleTransformId"));
+
+            if (!this.core.EncounteredError)
+            {
+                Row row = this.core.CreateRow(sourceLineNumbers, "WixMsiTransform");
+                row[0] = id;
+                row[1] = bundleTransformId;
+                row[2] = packageId;
+            }
+        }
+
         /// <summary>
         /// Parses a Bundle element.
         /// </summary>
@@ -20109,6 +20210,9 @@ namespace Microsoft.Tools.WindowsInstallerXml
                             case "Variable":
                                 this.ParseVariableElement(child);
                                 break;
+                            case "BundleTransform":
+                                this.ParseBundleTransformElement(child);
+                                break;
                             case "WixVariable":
                                 this.ParseWixVariableElement(child);
                                 break;
@@ -20136,6 +20240,7 @@ namespace Microsoft.Tools.WindowsInstallerXml
                     Row relatedBundleRow = this.core.CreateRow(sourceLineNumbers, "RelatedBundle");
                     relatedBundleRow[0] = upgradeCode;
                     relatedBundleRow[1] = (int)Wix.RelatedBundle.ActionType.Upgrade;
+                    relatedBundleRow[2] = (int)1;
                 }
 
                 Row row = this.core.CreateRow(sourceLineNumbers, "WixBundle");
@@ -21775,6 +21880,13 @@ namespace Microsoft.Tools.WindowsInstallerXml
                                 if (allowed)
                                 {
                                     this.ParseMsiPropertyElement(child, id);
+                                }
+                                break;
+                            case "MsiTransform":
+                                allowed = (packageType == ChainPackageType.Msi || packageType == ChainPackageType.Msp);
+                                if (allowed)
+                                {
+                                    this.ParseMsiTransformElement(child, id);
                                 }
                                 break;
                             case "Payload":

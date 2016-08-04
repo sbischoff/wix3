@@ -157,6 +157,7 @@ namespace Microsoft.Tools.WindowsInstallerXml
             this.RelatedPackages = new List<RelatedPackage>();
             this.MsiFeatures = new List<MsiFeature>();
             this.MsiProperties = new List<MsiPropertyInfo>();
+            this.MsiTransforms = new List<MsiTransformInfo>();
             this.SlipstreamMsps = new List<string>();
             this.ExitCodes = new List<ExitCodeInfo>();
             this.Provides = new ProvidesDependencyCollection();
@@ -243,7 +244,7 @@ namespace Microsoft.Tools.WindowsInstallerXml
         public string InstallCondition
         {
             get { return (string)this.Fields[3].Data; }
-            private set { this.Fields[3].Data = value;  }
+            private set { this.Fields[3].Data = value; }
         }
 
         public string InstallCommand
@@ -556,6 +557,9 @@ namespace Microsoft.Tools.WindowsInstallerXml
         public List<RelatedPackage> RelatedPackages { get; private set; }
         public List<MsiFeature> MsiFeatures { get; private set; }
         public List<MsiPropertyInfo> MsiProperties { get; private set; }
+
+        public List<MsiTransformInfo> MsiTransforms { get; private set; }
+
         public List<string> SlipstreamMsps { get; private set; }
         public List<ExitCodeInfo> ExitCodes { get; private set; }
         public ProvidesDependencyCollection Provides { get; private set; }
@@ -718,7 +722,7 @@ namespace Microsoft.Tools.WindowsInstallerXml
 
                     this.UpgradeCode = ChainPackageInfo.GetProperty(db, "UpgradeCode");
 
-                        // Represent the Upgrade table as related packages.
+                    // Represent the Upgrade table as related packages.
                     if (db.Tables.Contains("Upgrade") && !String.IsNullOrEmpty(this.UpgradeCode))
                     {
                         using (Microsoft.Deployment.WindowsInstaller.View view = db.OpenView("SELECT `UpgradeCode`, `VersionMin`, `VersionMax`, `Language`, `Attributes` FROM `Upgrade`"))

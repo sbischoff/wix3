@@ -13,18 +13,21 @@ namespace Microsoft.Tools.WindowsInstallerXml
     internal class RelatedBundleInfo
     {
         public RelatedBundleInfo(Row row)
-            : this((string)row[0], (int)row[1])
+            : this((string)row[0], (int)row[1], (int)row[2])
         {
         }
 
-        public RelatedBundleInfo(string id, int action)
+        public RelatedBundleInfo(string id, int action, int defaultUpgradeRelation)
         {
             this.Id = id;
             this.Action = (Wix.RelatedBundle.ActionType)action;
+            this.DefaultUpgradeRelation = defaultUpgradeRelation;
         }
 
         public string Id { get; private set; }
         public Wix.RelatedBundle.ActionType Action { get; private set; }
+
+        public int DefaultUpgradeRelation { get; private set; }
 
         /// <summary>
         /// Generates Burn manifest element for a RelatedBundle.
@@ -37,6 +40,7 @@ namespace Microsoft.Tools.WindowsInstallerXml
             writer.WriteStartElement("RelatedBundle");
             writer.WriteAttributeString("Id", this.Id);
             writer.WriteAttributeString("Action", Convert.ToString(this.Action));
+            writer.WriteAttributeString("DefaultUpgradeRelation", this.DefaultUpgradeRelation.ToString());
             writer.WriteEndElement();
         }
     }

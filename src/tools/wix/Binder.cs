@@ -2058,13 +2058,13 @@ namespace Microsoft.Tools.WindowsInstallerXml
             if (null != this.validator)
             {
                 Stopwatch stopwatch = Stopwatch.StartNew();
-              
+
                 // set the output file for source line information
                 this.validator.Output = output;
 
                 this.core.OnMessage(WixVerboses.ValidatingDatabase());
                 this.core.EncounteredError = !this.validator.Validate(tempDatabaseFile);
-              
+
                 stopwatch.Stop();
                 this.core.OnMessage(WixVerboses.ValidatedDatabase(stopwatch.ElapsedMilliseconds));
 
@@ -3702,6 +3702,30 @@ namespace Microsoft.Tools.WindowsInstallerXml
                 }
             }
 
+            // Load the MsiTransform information
+            Table msiTransformTable = bundle.Tables["WixMsiTransform"];
+            if (null != msiTransformTable && 0 < msiTransformTable.Rows.Count)
+            {
+                foreach (Row row in msiTransformTable.Rows)
+                {
+                    MsiTransformInfo msiTransform = new MsiTransformInfo(row);
+
+                    ChainPackageInfo package;
+                    if (allPackages.TryGetValue(msiTransform.PackageId, out package))
+                    {
+                        msiTransform.ExtractInstanceTransformationFromMsi(package.PackagePayload.FullFileName);
+                        package.MsiTransforms.Add(msiTransform);
+
+                        row.Fields[3].Data = msiTransform.UpgradeCode;
+                        row.Fields[4].Data = msiTransform.ProductCode;
+                    }
+                    else
+                    {
+                        core.OnMessage(WixErrors.IdentifierNotFound("Package", msiTransform.PackageId));
+                    }
+                }
+            }
+
             // Load the SlipstreamMsp information...
             Table slipstreamMspTable = bundle.Tables["SlipstreamMsp"];
             if (null != slipstreamMspTable && 0 < slipstreamMspTable.Rows.Count)
@@ -3781,7 +3805,7 @@ namespace Microsoft.Tools.WindowsInstallerXml
                     ApprovedExeForElevation approvedExeForElevation = new ApprovedExeForElevation(wixApprovedExeForElevationRow);
                     approvedExesForElevation.Add(approvedExeForElevation);
                 }
-            }            
+            }
 
             // Set the overridable bundle provider key.
             this.SetBundleProviderKey(bundle, bundleInfo);
@@ -3850,7 +3874,7 @@ namespace Microsoft.Tools.WindowsInstallerXml
             }
 
             string manifestPath = Path.Combine(this.TempFilesLocation, "bundle-manifest.xml");
-            this.CreateBurnManifest(bundleFile, bundleInfo, bundleUpdateRow, updateRegistrationInfo, manifestPath, allRelatedBundles, allVariables, orderedSearches, allPayloads, chain, containers, catalogs, bundle.Tables["WixBundleTag"], approvedExesForElevation, commandLinesByPackage);
+            this.CreateBurnManifest(bundleFile, bundleInfo, bundleUpdateRow, updateRegistrationInfo, manifestPath, allRelatedBundles, allVariables, orderedSearches, allPayloads, chain, containers, catalogs, bundle.Tables["WixBundleTag"], bundle.Tables["WixBundleTransform"], approvedExesForElevation, commandLinesByPackage);
 
             this.UpdateBurnResources(bundleTempPath, bundleFile, bundleInfo);
 
@@ -3932,6 +3956,7 @@ namespace Microsoft.Tools.WindowsInstallerXml
 
             return !this.core.EncounteredError;
         }
+
 
         private void GenerateBAManifestPackageTables(Output bundle, List<ChainPackageInfo> chainPackages)
         {
@@ -4275,7 +4300,7 @@ namespace Microsoft.Tools.WindowsInstallerXml
             }
         }
 
-        private void CreateBurnManifest(string outputPath, WixBundleRow bundleInfo, WixBundleUpdateRow updateRow, WixUpdateRegistrationRow updateRegistrationInfo, string path, List<RelatedBundleInfo> allRelatedBundles, List<VariableInfo> allVariables, List<WixSearchInfo> orderedSearches, Dictionary<string, PayloadInfoRow> allPayloads, ChainInfo chain, Dictionary<string, ContainerInfo> containers, Dictionary<string, CatalogInfo> catalogs, Table wixBundleTagTable, List<ApprovedExeForElevation> approvedExesForElevation, Dictionary<string, List<WixCommandLineRow>> commandLinesByPackage)
+        private void CreateBurnManifest(string outputPath, WixBundleRow bundleInfo, WixBundleUpdateRow updateRow, WixUpdateRegistrationRow updateRegistrationInfo, string path, List<RelatedBundleInfo> allRelatedBundles, List<VariableInfo> allVariables, List<WixSearchInfo> orderedSearches, Dictionary<string, PayloadInfoRow> allPayloads, ChainInfo chain, Dictionary<string, ContainerInfo> containers, Dictionary<string, CatalogInfo> catalogs, Table wixBundleTagTable, Table wixBundleTransformTable, List<ApprovedExeForElevation> approvedExesForElevation, Dictionary<string, List<WixCommandLineRow>> commandLinesByPackage)
         {
             string executableName = Path.GetFileName(outputPath);
 
@@ -4491,6 +4516,20 @@ namespace Microsoft.Tools.WindowsInstallerXml
                     }
                 }
 
+                if (null != wixBundleTransformTable)
+                {
+                    foreach (Row row in wixBundleTransformTable.Rows)
+                    {
+                        writer.WriteStartElement("Transform");
+                        writer.WriteAttributeString("Id", (string)row[0]);
+                        writer.WriteAttributeString("UpgradeCode", (string)row[3]);
+                        writer.WriteAttributeString("RegistrationId", (string)row[1]);
+                        writer.WriteAttributeString("DisplayName", (string)row[2]);
+                        writer.WriteAttributeString("ProviderKey", (string)row[1]);
+                        writer.WriteEndElement();
+                    }
+                }
+
                 writer.WriteEndElement(); // </Register>
 
                 // write the Chain...
@@ -4621,6 +4660,16 @@ namespace Microsoft.Tools.WindowsInstallerXml
                         writer.WriteStartElement("MsiProperty");
                         writer.WriteAttributeString("Id", msiProperty.Name);
                         writer.WriteAttributeString("Value", msiProperty.Value);
+                        writer.WriteEndElement();
+                    }
+
+                    foreach (MsiTransformInfo msiTransform in package.MsiTransforms)
+                    {
+                        writer.WriteStartElement("MsiTransform");
+                        writer.WriteAttributeString("Id", msiTransform.Id);
+                        writer.WriteAttributeString("BundleTransformId", msiTransform.BundleTransformId);
+                        writer.WriteAttributeString("ProductCode", msiTransform.ProductCode);
+                        writer.WriteAttributeString("UpgradeCode", msiTransform.UpgradeCode);
                         writer.WriteEndElement();
                     }
 

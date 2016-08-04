@@ -498,9 +498,9 @@ namespace Microsoft.Tools.WindowsInstallerXml
                             case "ChainPackage":
                             case "ChainPackageGroup":
                             case "MsiProperty":
+                            case "MsiTransform":
                                 copyRows = true;
                                 break;
-
                             case "CustomAction":
                                 if (OutputType.Module == this.activeOutput.Type)
                                 {
@@ -1723,7 +1723,7 @@ namespace Microsoft.Tools.WindowsInstallerXml
                                 break;
 
                             case ComplexReferenceParentType.Patch:
-                                switch(wixComplexReferenceRow.ChildType)
+                                switch (wixComplexReferenceRow.ChildType)
                                 {
                                     case ComplexReferenceChildType.PatchFamily:
                                     case ComplexReferenceChildType.PatchFamilyGroup:

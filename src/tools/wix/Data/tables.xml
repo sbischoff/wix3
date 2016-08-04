@@ -1669,6 +1669,19 @@
         <columnDefinition name="ProviderKey" type="string" length="38" category="guid" nullable="yes" description="Only valid after binding." />
         <columnDefinition name="PerMachine" type="number" length="2" nullable="yes" minValue="0" maxValue="1" description="Only valid after binding." />
     </tableDefinition>
+    <tableDefinition name="WixBundleTransform" unreal="yes">
+      <columnDefinition name="Id" type="string" length="0" primaryKey="yes"/>
+      <columnDefinition name="ProductCode" type="string" length="0" category="guid"/>
+      <columnDefinition name="ProductName" type="localized" localizable="yes" length="0" nullable="yes"/>
+      <columnDefinition name="UpgradeCode" type="string" length="38" category="guid" nullable="yes"/>
+    </tableDefinition>
+    <tableDefinition name="WixMsiTransform" unreal="yes">
+      <columnDefinition name="Id" type="string" length="0" primaryKey="no"/>
+      <columnDefinition name="BundleTransformId" type="string" length="0" primaryKey="yes"/>
+      <columnDefinition name="PackageId" type="string" length="0" primaryKey="no"/>
+      <columnDefinition name="UpgradeCode" type="string" length="38" category="guid" nullable="yes"/>
+      <columnDefinition name="ProductCode" type="string" length="38" category="guid" nullable="yes"/>
+    </tableDefinition>
     <tableDefinition name="WixApprovedExeForElevation" createSymbols="yes" unreal="yes">
       <columnDefinition name="Id" type="string" length="0" category="identifier" primaryKey="yes" />
       <columnDefinition name="Key" type="string" length="0" />
@@ -1792,6 +1805,7 @@
     <tableDefinition name="RelatedBundle" unreal="yes">
         <columnDefinition name="Id" type="string" length="38" category="guid" primaryKey="yes" />
         <columnDefinition name="Action" type="number" length="4" />
+        <columnDefinition name="DefaultUpgradeRelation" type="number" length="4" />
     </tableDefinition>
     <tableDefinition name="Variable" createSymbols="yes" unreal="yes">
         <columnDefinition name="Variable" type="string" length="0" category="identifier" primaryKey="yes" />
