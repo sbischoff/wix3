@@ -229,7 +229,7 @@ extern "C" HRESULT MsiEngineParsePackageFromXml(
         }
     }
 
-    hr = XmlSelectNodes(pixnMsiPackage, L"InstanceTransform", &pixnNodes);
+    hr = XmlSelectNodes(pixnMsiPackage, L"MsiTransform", &pixnNodes);
     ExitOnFailure(hr, "Failed to select instance transform nodes");
 
     hr = pixnNodes->get_length((long*)&cNodes);
@@ -1210,11 +1210,11 @@ extern "C" HRESULT MsiEngineExecutePackage(
 
     if (pExecuteAction->msiPackage.pPackage->Msi.activeInstanceTransform)
     {
-        StrAllocConcatFormatted(&sczProperties, L" TRANSFORMS=:%ls", pExecuteAction->msiPackage.pPackage->Msi.activeInstanceTransform->sczId);
+        StrAllocConcatFormatted(&sczProperties, L" TRANSFORMS=\":%ls\"", pExecuteAction->msiPackage.pPackage->Msi.activeInstanceTransform->sczId);
 
         if (pExecuteAction->msiPackage.action == BOOTSTRAPPER_ACTION_INSTALL)
         {
-            StrAllocConcat(&sczProperties, L" MSINEWINSTANCE=1", 0);
+            StrAllocConcat(&sczProperties, L" MSINEWINSTANCE=\"1\"", 0);
         }
     }
 
@@ -2053,6 +2053,9 @@ extern "C" HRESULT MsiApplyBundleTransform(
                         }
 
                         pPackage->Msi.activeInstanceTransform = &pPackage->Msi.rgInstanceTransforms[iTransform];
+
+                        LogStringLine(REPORT_STANDARD, "Applied instance transform %ls on package %ls", pPackage->Msi.rgInstanceTransforms[iTransform].sczId, pPackage->sczId);
+
                         break;
                     }
                 }

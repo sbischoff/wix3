@@ -800,7 +800,7 @@ extern "C" HRESULT RegistrationSessionBegin(
 
         if (pRegistration->activeTransfrom)
         {
-            StrAllocFormatted(&sczUninstallTransformParam, L" /%ls=%ls", BURN_COMMANDLINE_SWITCH_TRANSFORM, pRegistration->activeTransfrom);
+            StrAllocFormatted(&sczUninstallTransformParam, L" \"/%ls=%ls\"", BURN_COMMANDLINE_SWITCH_TRANSFORM, pRegistration->activeTransfrom->sczId);
         }
 
         // QuietUninstallString: [path to exe] /uninstall /quiet
