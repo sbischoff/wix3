@@ -240,6 +240,8 @@ extern "C" HRESULT MsiEngineParsePackageFromXml(
         pPackage->Msi.rgInstanceTransforms = (BURN_PACKAGE_MSI_INSTANCE_TRANSFORM*)MemAlloc(sizeof(BURN_PACKAGE_MSI_INSTANCE_TRANSFORM) * cNodes, TRUE);
         ExitOnNull(pPackage->Msi.rgInstanceTransforms, hr, E_OUTOFMEMORY, "Failed to allocate memory for msi instance transforms.");
 
+        pPackage->Msi.cInstanceTransforms = cNodes;
+
         for (DWORD i = 0; i < cNodes; ++i)
         {
             hr = XmlNextElement(pixnNodes, &pixnNode, NULL);
@@ -420,6 +422,7 @@ extern "C" void MsiEnginePackageUninitialize(
     }
 
     ReleaseStr(pPackage->Msi.sczUntransformedProductCode);
+    ReleaseStr(pPackage->Msi.sczUntransformedCacheId);
 
     // clear struct
     memset(&pPackage->Msi, 0, sizeof(pPackage->Msi));
@@ -1212,7 +1215,7 @@ extern "C" HRESULT MsiEngineExecutePackage(
     {
         StrAllocConcatFormatted(&sczProperties, L" TRANSFORMS=\":%ls\"", pExecuteAction->msiPackage.pPackage->Msi.activeInstanceTransform->sczId);
 
-        if (pExecuteAction->msiPackage.action == BOOTSTRAPPER_ACTION_INSTALL)
+        if (pExecuteAction->msiPackage.action != BOOTSTRAPPER_ACTION_STATE_UNINSTALL)
         {
             StrAllocConcat(&sczProperties, L" MSINEWINSTANCE=\"1\"", 0);
         }
@@ -1977,6 +1980,14 @@ static HRESULT ResetBundleTransfrom(
                 ReleaseNullStr(pPackage->Msi.sczUntransformedProductCode);
             }
 
+            if (pPackage->Msi.sczUntransformedCacheId)
+            {
+                hr = StrAllocString(&pPackage->sczCacheId, pPackage->Msi.sczUntransformedCacheId, 0);
+                ExitOnFailure(hr, "Failed to copy untransformed cache id to cache id.");
+
+                ReleaseNullStr(pPackage->Msi.sczUntransformedCacheId);
+            }
+
             if (pPackage->Msi.rgRelatedMsis)
             {
                 for (DWORD iRelated = 0; i < pPackage->Msi.cRelatedMsis; ++iRelated)
@@ -2004,6 +2015,7 @@ extern "C" HRESULT MsiApplyBundleTransform(
     )
 {
     HRESULT hr = S_OK;
+    LPWSTR sczCacheIdReminder = NULL;
 
     hr = ResetBundleTransfrom(pPackages);
     ExitOnFailure(hr, "Failed to reset bundle transfrom for msi packages.");
@@ -2013,13 +2025,15 @@ extern "C" HRESULT MsiApplyBundleTransform(
         for (DWORD iPackage = 0; iPackage < pPackages->cPackages; ++iPackage)
         {
             BURN_PACKAGE* pPackage = &pPackages->rgPackages[iPackage];
-            if (pPackage->type == BURN_PACKAGE_TYPE_MSI)
+            if (pPackage->type == BURN_PACKAGE_TYPE_MSI && pPackage->Msi.rgInstanceTransforms)
             {
                 for (DWORD iTransform = 0; iTransform < pPackage->Msi.cInstanceTransforms; ++iTransform)
                 {
-                    if (CSTR_EQUAL == ::CompareStringW(LOCALE_INVARIANT, 0, pPackage->Msi.rgInstanceTransforms[iTransform].sczBundleTransformId, -1, wzBundleTransformId, -1))
+                    BURN_PACKAGE_MSI_INSTANCE_TRANSFORM* pTransform = &pPackage->Msi.rgInstanceTransforms[iTransform];
+
+                    if (CSTR_EQUAL == ::CompareStringW(LOCALE_INVARIANT, 0, pTransform->sczBundleTransformId, -1, wzBundleTransformId, -1))
                     {
-                        if (pPackage->Msi.rgInstanceTransforms[iTransform].sczProductCode)
+                        if (pTransform->sczProductCode)
                         {
                             if (pPackage->rgDependencyProviders)
                             {
@@ -2027,7 +2041,7 @@ extern "C" HRESULT MsiApplyBundleTransform(
                                 {
                                     if (CSTR_EQUAL == ::CompareStringW(LOCALE_INVARIANT, 0, pPackage->rgDependencyProviders[iProvider].sczKey, -1, pPackage->Msi.sczProductCode, -1))
                                     {
-                                        hr = StrAllocString(&pPackage->rgDependencyProviders[iProvider].sczKey, pPackage->Msi.rgInstanceTransforms[iTransform].sczProductCode, 0);
+                                        hr = StrAllocString(&pPackage->rgDependencyProviders[iProvider].sczKey, pTransform->sczProductCode, 0);
                                         ExitOnFailure(hr, "Failed to copy the transformed product code to the dependency provider");
                                     }
                                 }
@@ -2036,25 +2050,34 @@ extern "C" HRESULT MsiApplyBundleTransform(
                             hr = StrAllocString(&pPackage->Msi.sczUntransformedProductCode, pPackage->Msi.sczProductCode, 0);
                             ExitOnFailure(hr, "Failed to copy product code to untransformed product code.");
 
-                            hr = StrAllocString(&pPackage->Msi.sczProductCode, pPackage->Msi.rgInstanceTransforms[iTransform].sczProductCode, 0);
+                            hr = StrAllocString(&pPackage->Msi.sczProductCode, pTransform->sczProductCode, 0);
                             ExitOnFailure(hr, "Failed to copy transformed product code to product code.");
+
+                            if (pPackage->sczCacheId)
+                            {
+                                hr = StrAllocString(&pPackage->Msi.sczUntransformedCacheId, pPackage->sczCacheId, 0);
+                                ExitOnFailure(hr, "Failed to copy cache id to untransformed cacheId.");
+
+                                hr = StrAllocFormatted(&pPackage->sczCacheId, L"%ls%ls", pPackage->Msi.sczUntransformedCacheId, pTransform->sczProductCode);
+                                ExitOnFailure(hr, "Failed to set transformed cache id.");
+                            }
                         }
 
-                        if (pPackage->Msi.rgInstanceTransforms[iTransform].sczUpgradeCode && pPackage->Msi.rgRelatedMsis)
+                        if (pTransform->sczUpgradeCode && pPackage->Msi.rgRelatedMsis)
                         {
                             for (DWORD iRelated = 0; iRelated < pPackage->Msi.cRelatedMsis; ++iRelated)
                             {
                                 hr = StrAllocString(&pPackage->Msi.rgRelatedMsis[iRelated].sczUntransformedUpgradeCode, pPackage->Msi.rgRelatedMsis[iRelated].sczUpgradeCode, 0);
                                 ExitOnFailure(hr, "Failed to copy upgrade code to untransformed upgrade code.");
 
-                                hr = StrAllocString(&pPackage->Msi.rgRelatedMsis[iRelated].sczUpgradeCode, pPackage->Msi.rgInstanceTransforms[iTransform].sczUpgradeCode, 0);
+                                hr = StrAllocString(&pPackage->Msi.rgRelatedMsis[iRelated].sczUpgradeCode, pTransform->sczUpgradeCode, 0);
                                 ExitOnFailure(hr, "Failed to copy transformed upgrade code to related msi.");
                             }
                         }
 
-                        pPackage->Msi.activeInstanceTransform = &pPackage->Msi.rgInstanceTransforms[iTransform];
+                        pPackage->Msi.activeInstanceTransform = pTransform;
 
-                        LogStringLine(REPORT_STANDARD, "Applied instance transform %ls on package %ls", pPackage->Msi.rgInstanceTransforms[iTransform].sczId, pPackage->sczId);
+                        LogStringLine(REPORT_STANDARD, "Applied instance transform %ls on package %ls", pTransform->sczId, pPackage->sczId);
 
                         break;
                     }
@@ -2064,5 +2087,7 @@ extern "C" HRESULT MsiApplyBundleTransform(
     }
 
 LExit:
+    ReleaseStr(sczCacheIdReminder);
+
     return hr;
 }

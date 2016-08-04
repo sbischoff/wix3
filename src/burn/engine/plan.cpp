@@ -664,6 +664,10 @@ extern "C" HRESULT PlanRegistration(
                 }
             }
 
+            LogStringLine(REPORT_STANDARD, "Provider key = %ls", pRegistration->sczProviderKey);
+            LogStringLine(REPORT_STANDARD, "sczDetectedProviderKeyBundleId = %ls", pRegistration->sczDetectedProviderKeyBundleId);
+            LogStringLine(REPORT_STANDARD, "sczRegistrationKey = %ls", pRegistration->sczRegistrationKey);
+
             // If there are any (non-ignored and not-planned-to-be-removed) dependents left, uninstall.
             hr = DepCheckDependents(pRegistration->hkRoot, pRegistration->sczProviderKey, 0, sdIgnoreDependents, &rgDependencies, &cDependencies);
             if (E_FILENOTFOUND == hr)

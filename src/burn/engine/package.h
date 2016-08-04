@@ -269,6 +269,7 @@ typedef struct _BURN_PACKAGE
             BURN_PACKAGE_MSI_INSTANCE_TRANSFORM* activeInstanceTransform;
 
             LPWSTR sczUntransformedProductCode;
+            LPWSTR sczUntransformedCacheId;
         } Msi;
         struct
         {

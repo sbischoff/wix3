@@ -1798,7 +1798,7 @@ extern "C" HRESULT RegistrationApplyTransfrom(
                     ExitOnFailure(hr, "Failed to copy transformed display name to display name.");
                 }
 
-                if (pRegistration->activeTransfrom->sczProviderKey && pRegistration->sczUntransformedProviderKey)
+                if (pRegistration->activeTransfrom->sczProviderKey && pRegistration->sczProviderKey)
                 {
                     hr = StrAllocString(&pRegistration->sczUntransformedProviderKey, pRegistration->sczProviderKey, 0);
                     ExitOnFailure(hr, "Failed to copy provider key to untransformed provider key.");
