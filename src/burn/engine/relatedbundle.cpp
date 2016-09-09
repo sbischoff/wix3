@@ -21,6 +21,7 @@ static HRESULT LoadRelatedBundleFromKey(
     __in HKEY hkBundleId,
     __in BOOL fPerMachine,
     __in BOOTSTRAPPER_RELATION_TYPE relationType,
+    __in BURN_REGISTRATION* pRegistration,
     __inout BURN_RELATED_BUNDLE *pRelatedBundle
     );
 
@@ -121,7 +122,7 @@ static HRESULT LoadIfRelatedBundle(
 
         BURN_RELATED_BUNDLE* pRelatedBundle = pRelatedBundles->rgRelatedBundles + pRelatedBundles->cRelatedBundles;
 
-        hr = LoadRelatedBundleFromKey(sczRelatedBundleId, hkBundleId, fPerMachine, relationType, pRelatedBundle);
+        hr = LoadRelatedBundleFromKey(sczRelatedBundleId, hkBundleId, fPerMachine, relationType, pRegistration, pRelatedBundle);
         ExitOnFailure1(hr, "Failed to initialize package from related bundle id: %ls", sczRelatedBundleId);
 
         ++pRelatedBundles->cRelatedBundles;
@@ -391,12 +392,16 @@ static HRESULT LoadRelatedBundleFromKey(
     __in HKEY hkBundleId,
     __in BOOL fPerMachine,
     __in BOOTSTRAPPER_RELATION_TYPE relationType,
+    __in BURN_REGISTRATION* pRegistration,
     __inout BURN_RELATED_BUNDLE *pRelatedBundle
     )
 {
     HRESULT hr = S_OK;
     DWORD64 qwEngineVersion = 0;
     LPWSTR sczCachePath = NULL;
+    LPWSTR sczInstallArguments = NULL;
+    LPWSTR sczRepairArguments = NULL;
+    LPWSTR sczUninstallArguments = NULL;
     DWORD64 qwFileSize = 0;
     BURN_DEPENDENCY_PROVIDER dependencyProvider = { };
 
@@ -442,9 +447,36 @@ static HRESULT LoadRelatedBundleFromKey(
 
     pRelatedBundle->relationType = relationType;
 
+    hr = StrAllocString(&sczInstallArguments, L"-quiet", 0);
+    ExitOnFailure1(hr, "Failed to allocate string for install command line for bundle: %ls", wzRelatedBundleId);
+
+    if (pRegistration->activeTransfrom)
+    {
+        hr = StrAllocConcatFormatted(&sczInstallArguments, L" /%ls=%ls", BURN_COMMANDLINE_SWITCH_TRANSFORM, pRegistration->activeTransfrom->sczId);
+        ExitOnFailure1(hr, "Failed to add argument to install command line for transform for bundle: %ls", wzRelatedBundleId);
+    }
+
+    hr = StrAllocString(&sczRepairArguments, L"-repair -quiet", 0);
+    ExitOnFailure1(hr, "Failed to allocate string for repair command line for bundle: %ls", wzRelatedBundleId);
+
+    if (pRegistration->activeTransfrom)
+    {
+        hr = StrAllocConcatFormatted(&sczRepairArguments, L" /%ls=%ls", BURN_COMMANDLINE_SWITCH_TRANSFORM, pRegistration->activeTransfrom->sczId);
+        ExitOnFailure1(hr, "Failed to add argument to repair command line for transform for bundle: %ls", wzRelatedBundleId);
+    }
+
+    hr = StrAllocString(&sczUninstallArguments, L"-uninstall -quiet", 0);
+    ExitOnFailure1(hr, "Failed to allocate string for uninstall command line for bundle: %ls", wzRelatedBundleId);
+
+    if (pRegistration->activeTransfrom)
+    {
+        hr = StrAllocConcatFormatted(&sczUninstallArguments, L" /%ls=%ls", BURN_COMMANDLINE_SWITCH_TRANSFORM, pRegistration->activeTransfrom->sczId);
+        ExitOnFailure1(hr, "Failed to add argument to uninstall command line for transform for bundle: %ls", wzRelatedBundleId);
+    }
+
     hr = PseudoBundleInitialize(qwEngineVersion, &pRelatedBundle->package, fPerMachine, wzRelatedBundleId, pRelatedBundle->relationType,
                                 BOOTSTRAPPER_PACKAGE_STATE_PRESENT, sczCachePath, sczCachePath, NULL, qwFileSize, FALSE,
-                                L"-quiet", L"-repair -quiet", L"-uninstall -quiet",
+                                sczInstallArguments, sczRepairArguments, sczUninstallArguments,
                                 (dependencyProvider.sczKey && *dependencyProvider.sczKey) ? &dependencyProvider : NULL,
                                 NULL, 0);
     ExitOnFailure1(hr, "Failed to initialize related bundle to represent bundle: %ls", wzRelatedBundleId);
@@ -452,6 +484,9 @@ static HRESULT LoadRelatedBundleFromKey(
 LExit:
     DependencyUninitialize(&dependencyProvider);
     ReleaseStr(sczCachePath);
+    ReleaseStr(sczInstallArguments);
+    ReleaseStr(sczRepairArguments);
+    ReleaseStr(sczUninstallArguments);
 
     return hr;
 }

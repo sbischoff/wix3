@@ -1854,7 +1854,7 @@ static HRESULT ExecuteExePackage(
     }
     else
     {
-        hrExecute = ExeEngineExecutePackage(pExecuteAction, &pEngineState->variables, fRollback, GenericExecuteMessageHandler, pContext, pEngineState->registration.activeTransfrom, pRestart);
+        hrExecute = ExeEngineExecutePackage(pExecuteAction, &pEngineState->variables, fRollback, GenericExecuteMessageHandler, pContext, pRestart);
         ExitOnFailure(hrExecute, "Failed to configure per-user EXE package.");
     }
 

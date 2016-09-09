@@ -373,7 +373,6 @@ extern "C" HRESULT ExeEngineExecutePackage(
     __in BOOL fRollback,
     __in PFN_GENERICMESSAGEHANDLER pfnGenericMessageHandler,
     __in LPVOID pvContext,
-    __in_opt BURN_REGISTRATION_TRANSFORM* pActiveTransform,
     __out BOOTSTRAPPER_APPLY_RESTART* pRestart
     )
 {
@@ -465,12 +464,6 @@ extern "C" HRESULT ExeEngineExecutePackage(
                 ExitOnFailure(hr, "Invalid Exe package action: %d.", pExecuteAction->exePackage.action);
             }
         }
-    }
-
-    if (pActiveTransform)
-    {
-        hr = StrAllocConcatFormatted(&sczArguments, L" /%ls=%ls", BURN_COMMANDLINE_SWITCH_TRANSFORM, pActiveTransform->sczId);
-        ExitOnFailure(hr, "Failed to add command-line argument for transform.");
     }
 
     // build command

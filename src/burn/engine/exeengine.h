@@ -39,7 +39,6 @@ HRESULT ExeEngineExecutePackage(
     __in BOOL fRollback,
     __in PFN_GENERICMESSAGEHANDLER pfnGenericExecuteProgress,
     __in LPVOID pvContext,
-    __in_opt BURN_REGISTRATION_TRANSFORM* pActiveTransform,
     __out BOOTSTRAPPER_APPLY_RESTART* pRestart
     );
 

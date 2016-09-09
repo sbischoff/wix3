@@ -2060,7 +2060,7 @@ static HRESULT OnExecuteExePackage(
     }
 
     // Execute EXE package.
-    hr = ExeEngineExecutePackage(&executeAction, pVariables, static_cast<BOOL>(dwRollback), GenericExecuteMessageHandler, hPipe, pRegistration->activeTransfrom, &exeRestart);
+    hr = ExeEngineExecutePackage(&executeAction, pVariables, static_cast<BOOL>(dwRollback), GenericExecuteMessageHandler, hPipe, &exeRestart);
     ExitOnFailure(hr, "Failed to execute EXE package.");
 
 LExit:
