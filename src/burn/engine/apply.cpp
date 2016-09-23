@@ -97,7 +97,8 @@ static HRESULT PromptForSource(
     __in_z LPCWSTR wzLocalSource,
     __in_z_opt LPCWSTR wzDownloadSource,
     __out BOOL* pfRetry,
-    __out BOOL* pfDownload
+    __out BOOL* pfDownload,
+    __out BOOL* pfIgnore
     );
 static HRESULT CopyPayload(
     __in BURN_CACHE_ACQUIRE_PROGRESS_CONTEXT* pProgress,
@@ -1080,6 +1081,7 @@ static HRESULT AcquireContainerOrPayload(
         BOOL fFoundLocal = FALSE;
         BOOL fCopy = FALSE;
         BOOL fDownload = FALSE;
+        BOOL fIgnore = FALSE;
 
         fRetry = FALSE;
         progress.fCancel = FALSE;
@@ -1100,7 +1102,7 @@ static HRESULT AcquireContainerOrPayload(
             DWORD dwLogId = pContainer ? (wzPayloadId ? MSG_PROMPT_CONTAINER_PAYLOAD_SOURCE : MSG_PROMPT_CONTAINER_SOURCE) : pPackage ? MSG_PROMPT_PACKAGE_PAYLOAD_SOURCE : MSG_PROMPT_BUNDLE_PAYLOAD_SOURCE;
             LogId(REPORT_STANDARD, dwLogId, wzPackageOrContainerId ? wzPackageOrContainerId : L"", wzPayloadId ? wzPayloadId : L"", sczSourceFullPath);
 
-            hr = PromptForSource(pUX, wzPackageOrContainerId, wzPayloadId, sczSourceFullPath, wzDownloadUrl, &fRetry, &fDownload);
+            hr = PromptForSource(pUX, wzPackageOrContainerId, wzPayloadId, sczSourceFullPath, wzDownloadUrl, &fRetry, &fDownload, &fIgnore);
 
             // If the BA requested download then ensure a download url is available (it may have been set
             // during PromptForSource so we need to check again).
@@ -1111,6 +1113,20 @@ static HRESULT AcquireContainerOrPayload(
                 {
                     hr = E_INVALIDARG;
                 }
+            }
+
+            if (fIgnore)
+            {
+                if (pContainer)
+                {
+                    pContainer->fMissing = TRUE;
+                }
+                else
+                {
+                    pPayload->fMissing = TRUE;
+                }
+
+                LogStringLine(REPORT_STANDARD, "BA ignored missing source (original path '%ls').", sczSourceFullPath);
             }
 
             // Log the error
@@ -1197,6 +1213,11 @@ static HRESULT LayoutOrCacheContainerOrPayload(
 
     *pfRetry = FALSE;
 
+    if ((pPayload && pPayload->fMissing) || (pContainer && pContainer->fMissing))
+    {
+        ExitFunction();
+    }
+
     do
     {
         int nResult = pUX->pUserExperience->OnCacheVerifyBegin(wzPackageOrContainerId, wzPayloadId);
@@ -1268,7 +1289,8 @@ static HRESULT PromptForSource(
     __in_z LPCWSTR wzLocalSource,
     __in_z_opt LPCWSTR wzDownloadSource,
     __out BOOL* pfRetry,
-    __out BOOL* pfDownload
+    __out BOOL* pfDownload,
+    __out BOOL* pfIgnore
     )
 {
     HRESULT hr = S_OK;
@@ -1300,6 +1322,10 @@ static HRESULT PromptForSource(
 
     case IDERROR:
         hr = HRESULT_FROM_WIN32(ERROR_INSTALL_FAILURE);
+        break;
+
+    case IDIGNORE:
+        *pfIgnore = TRUE;
         break;
 
     default:

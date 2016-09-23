@@ -73,6 +73,7 @@ typedef struct _BURN_CONTAINER
     DWORD64 qwAttachedOffset;
     BOOL fActuallyAttached;     // indicates whether an attached container is attached or missing.
 
+    BOOL fMissing;
     //LPWSTR* rgsczPayloads;
     //DWORD cPayloads;
 } BURN_CONTAINER;
