@@ -1622,7 +1622,7 @@ static HRESULT OnApplyInitialize(
     hr = ApplyLock(TRUE, phLock);
     ExitOnFailure(hr, "Failed to acquire lock due to setup in other session.");
 
-    if (sczTransform)
+    if (sczTransform && lstrlenW(sczTransform))
     {
         hr = RegistrationApplyTransfrom(pRegistration, sczTransform);
         ExitOnFailure(hr, "Failed to apply registration transform.");
