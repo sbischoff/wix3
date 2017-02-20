@@ -1215,9 +1215,13 @@ extern "C" HRESULT MsiEngineExecutePackage(
     {
         StrAllocConcatFormatted(&sczProperties, L" TRANSFORMS=\":%ls\"", pExecuteAction->msiPackage.pPackage->Msi.activeInstanceTransform->sczId);
 
-        if (pExecuteAction->msiPackage.action != BOOTSTRAPPER_ACTION_STATE_UNINSTALL)
+        if (pExecuteAction->msiPackage.action == BOOTSTRAPPER_ACTION_STATE_INSTALL || pExecuteAction->msiPackage.action == BOOTSTRAPPER_ACTION_STATE_ADMIN_INSTALL || pExecuteAction->msiPackage.action == BOOTSTRAPPER_ACTION_STATE_MAJOR_UPGRADE)
         {
             StrAllocConcat(&sczProperties, L" MSINEWINSTANCE=\"1\"", 0);
+        }
+        else
+        {
+            StrAllocConcatFormatted(&sczProperties, L" MSIINSTANCEGUID=\":%ls\"", pExecuteAction->msiPackage.pPackage->Msi.activeInstanceTransform->sczProductCode);
         }
     }
 
