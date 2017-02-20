@@ -1219,10 +1219,6 @@ extern "C" HRESULT MsiEngineExecutePackage(
         {
             StrAllocConcat(&sczProperties, L" MSINEWINSTANCE=\"1\"", 0);
         }
-        else
-        {
-            StrAllocConcatFormatted(&sczProperties, L" MSIINSTANCEGUID=\":%ls\"", pExecuteAction->msiPackage.pPackage->Msi.activeInstanceTransform->sczProductCode);
-        }
     }
 
     // set up properties
